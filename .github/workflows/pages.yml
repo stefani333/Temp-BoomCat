@@ -1,4 +1,4 @@
-name: Deploy Playground to GitHub Pages
+name: Deploy Game and Playground to GitHub Pages
 
 on:
   push:
@@ -6,6 +6,11 @@ on:
       - main
     paths:
       - 'docs/playground/**'
+      - 'apps/game-web/**'
+      - 'packages/game-core/**'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - 'package.json'
       - '.github/workflows/pages.yml'
   workflow_dispatch:
 
@@ -25,20 +30,36 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.27.0
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
-          cache-dependency-path: docs/playground/package-lock.json
 
-      - name: Install dependencies
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build game web
+        run: pnpm --filter @bombcat/game-web build
+
+      - name: Install playground dependencies
         working-directory: docs/playground
         run: npm ci
 
-      - name: Build
+      - name: Build playground
         working-directory: docs/playground
         run: npm run build
+
+      - name: Merge Pages artifact
+        run: |
+          rm -rf pages-dist
+          mkdir -p pages-dist/game
+          cp -R docs/playground/dist/. pages-dist/
+          cp -R apps/game-web/dist/. pages-dist/game/
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
@@ -46,7 +67,7 @@ jobs:
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: docs/playground/dist
+          path: pages-dist
 
   deploy:
     needs: build
