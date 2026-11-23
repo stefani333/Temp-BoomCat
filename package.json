@@ -1,0 +1,12 @@
+{
+  "name": "bombcat",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@11.27.0",
+  "scripts": {
+    "dev": "pnpm --filter @bombcat/game-web dev",
+    "build": "pnpm -r build",
+    "test": "pnpm --filter @bombcat/game-core test",
+    "typecheck": "pnpm -r typecheck"
+  }
+}
