@@ -4,10 +4,11 @@
 
 ## 一、提交规则
 
-- 每一次改动都必须形成一次独立的提交：完成一项修改后立即执行提交，不允许把改动留在工作区或暂存区。收工时仓库不应存在未提交的悬空改动。
-- 提交前先确认本次改动范围清晰；一次提交只包含一个主题，不把无关改动混在同一次提交中。
-- 提交信息需准确说明改动目的，遵循团队 Git 规范（Conventional Commits）。
-- 每次改动完成后由 AI 直接生成提交信息并执行提交，无需逐次等待用户确认。
+* 每一次改动都必须形成一次独立提交，完成一项修改后立即执行提交，不允许遗留未提交的改动。
+* 提交前确认本次改动范围清晰，一次提交只包含一个主题。
+* 提交信息遵循 Conventional Commits。
+* 每次改动完成后由 AI 生成提交信息并执行提交，无需逐次等待用户确认。
+* 不得将与当前任务无关的用户改动纳入提交。
 
 ## 二、技术栈
 
@@ -15,9 +16,9 @@
 
 ### 2.1 总原则
 
-- 公司以 monorepo 形式开发。
-- 以下为公司常用技术栈，不构成强制约束：具体选型需根据项目实际情况而定。文中「首选」「次选」「不建议」等标注是栈内的选择倾向，选型时结合项目实际判断。
-- 本文件只记录技术项，不记录版本号；原文未给出的版本不做补充。
+* 公司以 Monorepo 形式开发。
+* 以下为公司常用技术栈，不构成强制约束，具体选型根据项目实际情况决定。
+* 本文件只记录技术项，不记录版本号；未明确的版本不做补充。
 
 ### 2.2 前端与客户端
 
@@ -25,103 +26,147 @@
 
 核心基建：
 
-- TypeScript + Vite + Tailwind CSS / SCSS + Storybook + tsup
+* TypeScript + Vite + Tailwind CSS / SCSS + Storybook + tsup
 
 框架选型：
 
-| 框架 | 配套技术 |
-| --- | --- |
-| React（首选） | React Router + Zustand + Shadcn/UI + TanStack Query + TanStack Form + Zod |
-| Svelte（次选） | Svelte Store + Svelte Router + Melt UI + TanStack Query + Felte + Zod |
-| SolidJS | Solid Store + Solid Router + Solid Form + Kobalte + TanStack Query + Zod |
-| Vue | Vue Router + Vue Query + Pinia + Headless UI + VeeValidate + Zod |
+| 框架         | 配套技术                                                                      |
+| ---------- | ------------------------------------------------------------------------- |
+| React（首选）  | React Router + Zustand + Shadcn/UI + TanStack Query + TanStack Form + Zod |
+| Svelte（次选） | Svelte Store + Svelte Router + Melt UI + TanStack Query + Felte + Zod     |
+| SolidJS    | Solid Store + Solid Router + Solid Form + Kobalte + TanStack Query + Zod  |
+| Vue        | Vue Router + Vue Query + Pinia + Headless UI + VeeValidate + Zod          |
 
-样式方面核心基建写为「Tailwind CSS / SCSS」，具体取舍以 2.5 工程化与通用规范中的样式管理约定为准：以 Tailwind CSS 为主，视情况可结合 SCSS，但不建议。
+样式以 Tailwind CSS 为主，视情况可结合 SCSS，但不建议。
 
 #### 移动端
 
-| 类别 | 技术 |
-| --- | --- |
-| 原生开发 - iOS | Swift + SwiftUI + Combine |
-| 原生开发 - Android | Kotlin + Jetpack Compose |
+| 类别                     | 技术                          |
+| ---------------------- | --------------------------- |
+| 原生开发 - iOS             | Swift + SwiftUI + Combine   |
+| 原生开发 - Android         | Kotlin + Jetpack Compose    |
 | 跨平台/半原生 - React Native | React 体系 + React Navigation |
-| 小程序/混合开发 - TaroJS | React 体系 |
+| 小程序/混合开发 - TaroJS      | React 体系                    |
 
 #### 桌面端
 
-- 框架：Tauri（首选）/ Electron
-- 技术栈：React 体系 + Rust（Tauri 后端）/ NodeJS（Electron 后端）
+* 框架：Tauri（首选）/ Electron
+* 技术栈：React 体系 + Rust（Tauri 后端）/ NodeJS（Electron 后端）
 
 ### 2.3 服务端
 
 #### 服务端分层架构
 
-- Web 业务层：Node.js + MidwayJS + TypeScript + TypeORM
-- 高性能/特定场景：
-  - Rust：Axum / Clap + Tokio + SQLx（高并发/底层）
-  - Golang：Chi / Cobra + PGx（中高并发/底层）
-  - LUA：OpenResty/脚本逻辑（网关/特定业务）
-- 基础设施：K8S + Docker + RabbitMQ（首选）/ Kafka（配合 CDC 工具使用）+ PostgreSQL + Redis
+* Web 业务层：Node.js + MidwayJS + TypeScript + TypeORM
+* 高性能/特定场景：
+
+  * Rust：Axum / Clap + Tokio + SQLx（高并发/底层）
+  * Golang：Chi / Cobra + PGx（中高并发/底层）
+  * LUA：OpenResty/脚本逻辑（网关/特定业务）
+* 基础设施：K8S + Docker + RabbitMQ（首选）/ Kafka（配合 CDC 工具使用）+ PostgreSQL + Redis
 
 #### 数据存储
 
-| 用途 | 技术 |
-| --- | --- |
-| 核心数据库 | PostgreSQL |
+| 用途    | 技术                         |
+| ----- | -------------------------- |
+| 核心数据库 | PostgreSQL                 |
 | 分析数据库 | ClickHouse / StarRocks（首选） |
-| 本地存储 | SQLite（前端/设备端轻量级存储） |
-| 缓存 | Redis |
+| 本地存储  | SQLite（前端/设备端轻量级存储）        |
+| 缓存    | Redis                      |
 
 ### 2.4 硬件开发（IoT）
 
-- 平台：ESP32 / Arduino / 嵌入式 Linux
-- 语言：
-  - C/C++（Arduino/ESP-IDF）
-  - MicroPython / Python
-  - Rust（Embedded）
-  - Golang（TinyGo）
-  - LUA（NodeMCU/Embedded）
-- 通信：MQTT
+* 平台：ESP32 / Arduino / 嵌入式 Linux
+* 语言：
+
+  * C/C++（Arduino/ESP-IDF）
+  * MicroPython / Python
+  * Rust（Embedded）
+  * Golang（TinyGo）
+  * LUA（NodeMCU/Embedded）
+* 通信：MQTT
 
 ### 2.5 工程化与通用规范
 
-| 类别 | 内容 |
-| --- | --- |
-| 包管理/Monorepo | Turborepo + Changesets + pnpm |
-| 代码与提交规范 | ESLint + Prettier + Husky |
-| 测试体系 - 前端 | Vitest |
-| 测试体系 - 后端 | Mocha / 原生测试框架（Go/Rust） |
-| 样式管理 | Tailwind CSS 为主，视情况可结合 SCSS（但不建议） |
-| 构建工具 | Vite（应用）、tsup（库） |
-| 安全 | OAuth 2.0 with PKCE + OIDC + DPoP + FAPI L2 + Refresh Token Rotation + TLS 1.2+ |
+| 类别           | 内容                                                                              |
+| ------------ | ------------------------------------------------------------------------------- |
+| 包管理/Monorepo | Turborepo + Changesets + pnpm                                                   |
+| 代码与提交规范      | ESLint + Prettier + Husky                                                       |
+| 测试体系 - 前端    | Vitest                                                                          |
+| 测试体系 - 后端    | Mocha / 原生测试框架（Go/Rust）                                                         |
+| 样式管理         | Tailwind CSS 为主，视情况可结合 SCSS（但不建议）                                               |
+| 构建工具         | Vite（应用）、tsup（库）                                                                |
+| 安全           | OAuth 2.0 with PKCE + OIDC + DPoP + FAPI L2 + Refresh Token Rotation + TLS 1.2+ |
+
+### 2.6 炸弹猫项目端划分
+
+本项目包含三个独立端，统一采用 Monorepo 管理：
+
+| 端            | 定位      | 核心职责                                  |
+| ------------ | ------- | ------------------------------------- |
+| 官网           | 品牌与信息展示 | 游戏介绍、玩法规则、新闻公告、下载或游戏入口                |
+| 游戏网页移动端（PWA） | 玩家游戏入口  | 玩家登录、房间管理、多人在线对局、游戏交互；支持 PWA 安装与移动端适配 |
+| 后台管理端        | 运营与管理入口 | 玩家管理、房间管理、对局管理、游戏配置、公告管理、管理员权限及操作日志   |
+
+三个端职责独立，通过统一服务端 API 和实时通信服务交互。不得将后台管理逻辑、游戏核心规则或服务端业务逻辑直接耦合到官网或游戏客户端。
+
+具体技术选型、目录结构及端间共享方案：待工程审计确认。
 
 ## 三、代码与文档约定
 
-- 交付物用于正式场景：不使用 emoji 或装饰性符号，状态用纯文字描述。
-- ASCII/Unicode 字符画所需的框线字符与箭头可保留作为图示记号。
-- 代码注释与文档语言：待补充。
+* 交付物用于正式场景，不使用 Emoji 或装饰性符号，状态使用纯文字描述。
+* ASCII/Unicode 字符画所需的框线字符与箭头可保留作为图示记号。
+* 代码注释与文档语言：待补充。
 
 ## 四、目录与文件管理
 
-- 主工作目录：/Users/macmima1234/Documents/Temp-BoomCat
-- 临时脚本、草稿、调试输出、缓存等中间产物不得混入正式交付目录，具体存放位置：待补充。
+* 主工作目录：`/Users/macmima1234/Documents/Temp-BoomCat`
+* 临时脚本、草稿、调试输出、缓存等中间产物不得混入正式交付目录，具体存放位置：待补充。
+* Monorepo 具体目录划分：待工程审计确认。
 
 ## 五、Git 远程与分支
 
-- 配置或修改远程仓库地址时，统一使用仓库页面上的 SSH 地址（git@github.com:...），不使用 HTTPS 地址。
-- 分支命名规范：待补充。
-- 合并与发布流程：待补充。
+* 配置或修改远程仓库地址时，统一使用仓库页面上的 SSH 地址，不使用 HTTPS 地址。
+* 分支命名规范：待补充。
+* 合并与发布流程：待补充。
 
 ## 六、验证与质量要求
 
-- 声明任务完成前需实际执行验证并确认结果，不接受未验证的完成结论。
-- 构建、测试、检查命令：待补充。
+* 声明任务完成前必须实际执行验证并确认结果，不接受未验证的完成结论。
+* 官网、游戏端、后台管理端均需分别验证构建与核心功能。
+* 游戏端需验证移动端适配、PWA 安装能力及实时通信。
+* 游戏核心规则必须经过独立测试，确保客户端展示与服务端判定一致。
+* 构建、测试、检查命令：待补充。
 
-## 七、待补充事项
+## 七、游戏业务规范
 
-- 各技术栈的具体版本约束：待补充（技术项已见第二节，原文未给出版本号）。
-- 目录结构说明：待补充（已知采用 monorepo，目录划分未确定）。
-- 依赖安装与本地运行方式：待补充（工具链为 pnpm + Turborepo，具体命令未确定）。
-- 环境变量与密钥管理方式：待补充。
-- 提交信息示例与范围（scope）约定：待补充。
-- 其他团队约定：待补充。
+* 游戏规则以产品负责人最终确认的规则文档为唯一业务依据。
+* 不得擅自修改、简化或补充已确认的游戏规则。
+* 游戏核心规则与客户端 UI 分离，由独立规则模块维护。
+* 服务端是游戏状态的唯一权威来源，客户端不得自行决定游戏结果。
+* 随机抽牌、洗牌、炸弹猫分配及拆除位置等操作由服务端执行。
+* 玩家只能获取其有权查看的信息，不得通过接口、日志或客户端数据获取其他玩家的隐藏手牌。
+* 关键游戏事件应保留记录，支持问题排查和对局追溯。
+* 游戏规则变更应保留版本记录。
+
+## 八、AI 助手 协作规范
+
+* 开始任务前必须阅读本文件及相关业务文档。
+* 修改前先检查 Git 工作区状态，不得覆盖、删除或提交与当前任务无关的用户改动。
+* 严格按照用户指定的任务范围实施，不擅自扩大需求。
+* 发现需求冲突、规则缺失或重大技术风险时，暂停相关实现并报告。
+* 不得伪造测试、构建、运行或浏览器验证结果。
+* 每项任务完成后，汇报修改文件、实现内容、验证结果、提交记录及遗留问题。
+* 自动提交仅适用于当前任务明确授权且验证通过的改动；遇到冲突、敏感文件或无关改动时，停止提交并报告。
+
+## 九、待补充事项
+
+* 各技术栈的具体版本约束。
+* 项目最终技术选型及 Monorepo 目录结构。
+* 依赖安装与本地运行方式。
+* 环境变量与密钥管理方式。
+* 提交信息示例与 scope 约定。
+* Git 分支、合并与发布流程。
+* 各端构建、测试及部署命令。
+* 生产环境部署、监控与告警方案。
+* 其他团队约定。
