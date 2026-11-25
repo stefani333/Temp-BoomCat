@@ -72,6 +72,7 @@ export function TableScreen({
   const [playStep, setPlayStep] = useState<PlayStep | null>(null);
   const [note, setNote] = useState('');
   const [insertValue, setInsertValue] = useState('1');
+  const [confirmAbandon, setConfirmAbandon] = useState(false);
 
   const pending = view.pending;
   const me = view.myPlayerId;
@@ -94,6 +95,7 @@ export function TableScreen({
     setSelectedIds([]);
     setPlayStep(null);
     setNote('');
+    setConfirmAbandon(false);
   }, [view.currentPlayerId, view.turnNumber, pending?.id]);
 
   useEffect(() => {
@@ -345,10 +347,11 @@ export function TableScreen({
                 key={player.id}
                 type="button"
                 className="target"
+                disabled={player.handCount === 0}
                 onClick={() => handleTarget(player.id)}
               >
                 <strong>{player.name}</strong>
-                <span>手牌 {player.handCount}</span>
+                <span>{player.handCount === 0 ? '无手牌，不可选择' : `手牌 ${player.handCount}`}</span>
               </button>
             ))}
           </div>
@@ -359,12 +362,14 @@ export function TableScreen({
       {playStep?.phase === 'name' ? (
         <Modal title="指定卡牌名称">
           <p className="modal__desc">目标：{playerName(view, playStep.targetPlayerId)}</p>
+          <p className="hint">手牌为空的玩家不可作为恩惠或猫咪组合的目标；炸弹猫不可作为指定名称。</p>
           <div className="name-grid">
             {CARD_NAME_OPTIONS.map((option) => (
               <button
                 key={option.key}
                 type="button"
                 className="btn btn--tiny"
+                disabled={option.key === 'bomb'}
                 onClick={() => commit({ targetPlayerId: playStep.targetPlayerId, namedCardName: option.key })}
               >
                 {option.label}
@@ -440,19 +445,35 @@ export function TableScreen({
             使用一张拆除（消火）可避免淘汰，并秘密把炸弹猫放回抽牌堆。拆除处理不受休想影响。
           </p>
           <p className="hint">{myDefuseCount > 0 ? `手牌中有 ${myDefuseCount} 张拆除。` : '手牌中没有拆除，将被淘汰。'}</p>
-          <div className="modal__actions">
-            <button
-              type="button"
-              className="btn btn--primary"
-              disabled={myDefuseCount === 0}
-              onClick={() => onResolveBomb(true)}
-            >
-              使用拆除
-            </button>
-            <button type="button" className="btn btn--danger" onClick={() => onResolveBomb(false)}>
-              放弃并淘汰
-            </button>
-          </div>
+          {confirmAbandon ? (
+            <>
+              <p className="hint hint--warn">
+                确认放弃拆除将立即被淘汰，全部手牌与炸弹移出本局，操作不可撤销。
+              </p>
+              <div className="modal__actions">
+                <button type="button" className="btn btn--danger" onClick={() => onResolveBomb(false)}>
+                  确认淘汰
+                </button>
+                <button type="button" className="btn btn--muted" onClick={() => setConfirmAbandon(false)}>
+                  取消
+                </button>
+              </div>
+            </>
+          ) : (
+            <div className="modal__actions">
+              <button
+                type="button"
+                className="btn btn--primary"
+                disabled={myDefuseCount === 0}
+                onClick={() => onResolveBomb(true)}
+              >
+                使用拆除
+              </button>
+              <button type="button" className="btn btn--danger" onClick={() => setConfirmAbandon(true)}>
+                放弃并淘汰
+              </button>
+            </div>
+          )}
         </Modal>
       ) : null}
 
