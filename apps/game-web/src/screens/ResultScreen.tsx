@@ -3,10 +3,11 @@ import type { GameView } from '@bombcat/game-core';
 interface ResultScreenProps {
   view: GameView;
   onRestart: () => void;
+  onReturnRoom: () => void;
   onHome: () => void;
 }
 
-export function ResultScreen({ view, onRestart, onHome }: ResultScreenProps) {
+export function ResultScreen({ view, onRestart, onReturnRoom, onHome }: ResultScreenProps) {
   const winner = view.players.find((p) => p.id === view.winnerPlayerId);
   const alive = view.players.filter((p) => p.alive).length;
   const keyEvents = view.events.filter((event) =>
@@ -72,6 +73,9 @@ export function ResultScreen({ view, onRestart, onHome }: ResultScreenProps) {
       <div className="result-actions">
         <button type="button" className="btn btn--primary" onClick={onRestart}>
           再来一局
+        </button>
+        <button type="button" className="btn btn--accent" onClick={onReturnRoom}>
+          返回房间
         </button>
         <button type="button" className="btn btn--ghost" onClick={onHome}>
           返回首页
