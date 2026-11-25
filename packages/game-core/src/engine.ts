@@ -314,10 +314,12 @@ export class GameEngine {
       target = this.player(action.targetPlayerId);
       if (!target || !target.alive) return this.fail('目标玩家无效');
       if (target.id === player.id) return this.fail('不能选择自己作为目标');
+      if (target.hand.length === 0) return this.fail('目标玩家没有手牌，不能选择');
     }
 
     if (kind === 'comboThree') {
       if (!action.namedCardName) return this.fail('请指定一种卡牌名称');
+      if (action.namedCardName === 'bomb') return this.fail('不能指定炸弹猫');
       if (!CARD_NAME_OPTIONS.some((option) => option.key === action.namedCardName)) {
         return this.fail('指定的卡牌名称无效');
       }
@@ -575,6 +577,7 @@ export class GameEngine {
     }
     const next = this.nextAliveFrom(player.seat);
     if (next) this.state.currentPlayerId = next.id;
+    // 规则确认 Q-01：攻击状态随被攻击者淘汰失效，后续玩家按正常 1 个回合开始。
     this.state.turnsRemaining = 1;
     this.state.turnNumber += 1;
     this.state.cardsPlayedThisTurn = 0;

@@ -56,6 +56,7 @@ function pickRichestTarget(player: Player, others: Player[]): Player | undefined
 export function decideBotPlay(state: GameState, player: Player, others: Player[]): GameAction | null {
   const hand = player.hand;
   if (others.length === 0) return null;
+  const targetsWithCards = others.filter((p) => p.hand.length > 0);
   const played = state.cardsPlayedThisTurn;
 
   const attack = hand.find((c) => c.type === 'attack');
@@ -80,8 +81,8 @@ export function decideBotPlay(state: GameState, player: Player, others: Player[]
   }
 
   const exactTwo = findCatGroup(hand, 2);
-  if (exactTwo && played < 2 && nextRandom(state) < 0.55) {
-    const target = pickRichestTarget(player, others);
+  if (exactTwo && played < 2 && targetsWithCards.length > 0 && nextRandom(state) < 0.55) {
+    const target = pickRichestTarget(player, targetsWithCards);
     if (target) {
       return {
         type: 'PLAY_CARD',
@@ -106,10 +107,11 @@ export function decideBotPlay(state: GameState, player: Player, others: Player[]
   }
 
   const exactThree = findCatGroup(hand, 3);
-  if (exactThree && played < 2 && nextRandom(state) < 0.4) {
-    const target = pickRichestTarget(player, others);
+  if (exactThree && played < 2 && targetsWithCards.length > 0 && nextRandom(state) < 0.4) {
+    const target = pickRichestTarget(player, targetsWithCards);
     if (target) {
-      const option = CARD_NAME_OPTIONS[randomInt(state, CARD_NAME_OPTIONS.length)];
+      const nameOptions = CARD_NAME_OPTIONS.filter((option) => option.key !== 'bomb');
+      const option = nameOptions[randomInt(state, nameOptions.length)];
       if (option) {
         return {
           type: 'PLAY_CARD',
@@ -122,9 +124,9 @@ export function decideBotPlay(state: GameState, player: Player, others: Player[]
     }
   }
 
-  if (favor && played < 2 && nextRandom(state) < 0.45) {
-    const target = pickRichestTarget(player, others);
-    if (target && target.hand.length > 0) {
+  if (favor && played < 2 && targetsWithCards.length > 0 && nextRandom(state) < 0.45) {
+    const target = pickRichestTarget(player, targetsWithCards);
+    if (target) {
       return {
         type: 'PLAY_CARD',
         playerId: player.id,

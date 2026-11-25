@@ -333,15 +333,81 @@ describe('特殊卡牌效果', () => {
     expect(player(engine.state, 'p2').hand).toHaveLength(1);
   });
 
-  it('恩惠目标没有手牌时直接结算且不产生待交付状态', () => {
+  it('恩惠、两张猫与三张猫禁止选择空手牌目标', () => {
     const engine = startGame(3);
     clearNopes(engine.state);
     setHand(engine.state, 'p2', []);
     const favor = give(engine.state, 'p1', makeCard('favor'));
-    engine.apply({ type: 'PLAY_CARD', playerId: 'p1', cardIds: [favor.id], targetPlayerId: 'p2' });
-    expect(engine.state.pending).toBeNull();
-    expect(engine.state.currentPlayerId).toBe('p1');
-    expect(eventText(engine.state)).toContain('目标没有手牌');
+    const favorResult = engine.apply({
+      type: 'PLAY_CARD',
+      playerId: 'p1',
+      cardIds: [favor.id],
+      targetPlayerId: 'p2',
+    });
+    expect(favorResult.ok).toBe(false);
+    expect(favorResult.error).toContain('没有手牌');
+
+    setHand(engine.state, 'p1', [makeCard('cat', 'burger'), makeCard('cat', 'burger')]);
+    const twoCats = player(engine.state, 'p1').hand.map((c) => c.id);
+    const twoResult = engine.apply({
+      type: 'PLAY_CARD',
+      playerId: 'p1',
+      cardIds: twoCats,
+      targetPlayerId: 'p2',
+    });
+    expect(twoResult.ok).toBe(false);
+    expect(twoResult.error).toContain('没有手牌');
+
+    setHand(engine.state, 'p1', [
+      makeCard('cat', 'fries'),
+      makeCard('cat', 'fries'),
+      makeCard('cat', 'fries'),
+    ]);
+    const threeCats = player(engine.state, 'p1').hand.map((c) => c.id);
+    const threeResult = engine.apply({
+      type: 'PLAY_CARD',
+      playerId: 'p1',
+      cardIds: threeCats,
+      targetPlayerId: 'p2',
+      namedCardName: 'skip',
+    });
+    expect(threeResult.ok).toBe(false);
+    expect(threeResult.error).toContain('没有手牌');
+    expect(player(engine.state, 'p1').hand).toHaveLength(3);
+  });
+
+  it('三张相同猫咪不能指定炸弹猫', () => {
+    const engine = startGame(3);
+    clearNopes(engine.state);
+    setHand(engine.state, 'p1', [
+      makeCard('cat', 'fries'),
+      makeCard('cat', 'fries'),
+      makeCard('cat', 'fries'),
+    ]);
+    const ids = player(engine.state, 'p1').hand.map((c) => c.id);
+    const result = engine.apply({
+      type: 'PLAY_CARD',
+      playerId: 'p1',
+      cardIds: ids,
+      targetPlayerId: 'p2',
+      namedCardName: 'bomb',
+    });
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain('不能指定炸弹猫');
+    expect(player(engine.state, 'p1').hand).toHaveLength(3);
+  });
+
+  it('攻击状态下抽到炸弹被淘汰时，攻击失效且下一位从正常回合开始', () => {
+    const engine = startGame(3);
+    clearNopes(engine.state);
+    stripType(engine.state, 'defuse');
+    engine.state.currentPlayerId = 'p1';
+    engine.state.turnsRemaining = 2;
+    setDrawPile(engine.state, [makeCard('bomb'), makeCard('skip')]);
+    engine.apply({ type: 'DRAW_CARD', playerId: 'p1' });
+    expect(player(engine.state, 'p1').alive).toBe(false);
+    expect(engine.state.currentPlayerId).toBe('p2');
+    expect(engine.state.turnsRemaining).toBe(1);
   });
 
   it('攻击使下一位玩家获得两个回合，再次攻击只转移不叠加', () => {
