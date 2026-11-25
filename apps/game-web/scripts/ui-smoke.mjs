@@ -38,10 +38,13 @@ const chrome = spawn(
     '--no-default-browser-check',
     '--disable-gpu',
     '--window-size=1440,1000',
+    ...(process.env.CI ? ['--no-sandbox', '--disable-dev-shm-usage'] : []),
     'about:blank',
   ],
   { stdio: 'ignore' },
 );
+
+let bombConfirmChecked = false;
 
 let socket;
 let nextId = 1;
@@ -137,8 +140,27 @@ async function handleModal() {
   } else if (title.includes('选择交给')) {
     await clickSelector('.favor-picker .card');
   } else if (title.includes('你抽到了炸弹猫')) {
-    const used = await clickText('使用拆除');
-    if (!used) await clickText('放弃并淘汰');
+    const hasConfirm = snap.modalButtons.includes('确认淘汰');
+    if (hasConfirm) {
+      log('检测到二次确认浮层，选择取消');
+      await clickText('取消');
+    } else if (snap.modalButtons.includes('使用拆除') && !bombConfirmChecked) {
+      bombConfirmChecked = true;
+      log('验证炸弹放弃二次确认：先点击放弃并淘汰');
+      await clickText('放弃并淘汰');
+      await sleep(400);
+      const cancelled = await clickText('取消');
+      log(cancelled ? '二次确认取消成功' : '未找到取消按钮');
+      await sleep(300);
+      if (await clickText('使用拆除')) {
+        log('取消确认后继续使用拆除');
+      } else {
+        await clickText('放弃并淘汰');
+      }
+    } else {
+      const used = await clickText('使用拆除');
+      if (!used) await clickText('放弃并淘汰');
+    }
   } else if (title.includes('放回炸弹猫')) {
     await clickText('牌堆顶部');
   } else if (title.includes('预见未来')) {
@@ -201,6 +223,13 @@ try {
   log('选择 3 人局');
   if (!(await clickText('3 人'))) throw new Error('未找到 3 人按钮');
   await sleep(300);
+  log('验证首页规则入口');
+  if (!(await clickText('查看规则'))) throw new Error('未找到查看规则按钮');
+  await sleep(400);
+  const rulesTitle = await evaluate(`document.querySelector('.modal h3')?.innerText || ''`);
+  if (!rulesTitle.includes('规则摘要')) throw new Error('规则摘要浮层未打开');
+  if (!(await clickText('知道了'))) throw new Error('规则摘要浮层缺少关闭按钮');
+  await sleep(300);
   log('创建房间');
   if (!(await clickText('创建并进入房间'))) throw new Error('未找到创建房间按钮');
   await sleep(900);
@@ -239,6 +268,18 @@ try {
   log('牌桌初始状态：', JSON.stringify({ hand: snap.handCount, current: snap.current, draw: snap.drawPile }));
   if (!snap.table || snap.handCount !== 5) throw new Error('牌桌未正确显示 5 张初始手牌');
   if (!snap.myTurn) throw new Error('起始玩家不是本人');
+
+  log('验证本地恢复：刷新页面');
+  await send('Page.reload');
+  await sleep(1800);
+  const resumeVisible = await evaluate(`document.body.innerText.includes('继续上局')`);
+  if (!resumeVisible) throw new Error('刷新后首页未显示继续上局入口');
+  if (!(await clickText('继续上局'))) throw new Error('未找到继续上局按钮');
+  await sleep(1200);
+  snap = await snapshot();
+  if (!snap.table || snap.handCount !== 5) throw new Error('刷新后未能恢复到牌桌');
+  if (snap.logCount === 0) throw new Error('恢复后的对局日志为空');
+  log('刷新后恢复成功，日志条数', snap.logCount);
 
   log('抽牌结束第一回合');
   await clickText('抽牌并结束回合');
@@ -293,11 +334,25 @@ try {
   }
 
   snap = await snapshot();
+  let returnedRoom = false;
+  if (result) {
+    log('验证结算页返回房间');
+    if (!(await clickText('返回房间'))) throw new Error('未找到返回房间按钮');
+    await sleep(1000);
+    returnedRoom = await evaluate(
+      `(() => document.body.innerText.includes('等待开局')
+        && document.querySelectorAll('.seat-list .seat').length === 3)()`,
+    );
+    if (!returnedRoom) throw new Error('返回房间后未恢复到等待开局页面');
+    log('返回房间成功，座位数 3');
+  }
+
   const summary = {
     reachedTable: snap.table,
     handCountAtStart: 5,
     sawBotAction,
     playedCardInUi: playedCard,
+    returnedRoom,
     result,
     current: snap.current,
     logTail: snap.logTail,

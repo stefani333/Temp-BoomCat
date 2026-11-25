@@ -43,8 +43,23 @@ jobs:
       - name: Install workspace dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Run rule tests
+        run: pnpm test
+
       - name: Build game web
         run: pnpm --filter @bombcat/game-web build
+
+      - name: Run browser smoke
+        run: |
+          set -e
+          pnpm --filter @bombcat/game-web dev &
+          for i in $(seq 1 40); do
+            if curl -sf http://localhost:5200/ > /dev/null; then break; fi
+            sleep 1
+          done
+          curl -sf http://localhost:5200/ > /dev/null
+          CHROME_PATH="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium)" \
+            pnpm --filter @bombcat/game-web ui:smoke
 
       - name: Install playground dependencies
         working-directory: docs/playground
