@@ -4,7 +4,6 @@ interface RoomScreenProps {
   view: GameView;
   onJoinBot: () => void;
   onToggleReady: () => void;
-  onSetStartPlayer: (playerId: string) => void;
   onStart: () => void;
   onBack: () => void;
 }
@@ -13,7 +12,6 @@ export function RoomScreen({
   view,
   onJoinBot,
   onToggleReady,
-  onSetStartPlayer,
   onStart,
   onBack,
 }: RoomScreenProps) {
@@ -78,18 +76,8 @@ export function RoomScreen({
         </div>
 
         <label className="field">
-          <span>起始玩家（房主指定，未指定不可开始）</span>
-          <select
-            value={view.startPlayerId ?? ''}
-            onChange={(event) => onSetStartPlayer(event.target.value)}
-          >
-            <option value="">请选择起始玩家</option>
-            {view.players.map((player) => (
-              <option key={player.id} value={player.id}>
-                {player.name}
-              </option>
-            ))}
-          </select>
+          <span>起始玩家</span>
+          <p className="hint">新开一局由房主先手，后续对局由上一局胜者先手，无需手动指定。</p>
         </label>
 
         {view.startBlockReason ? (
@@ -114,7 +102,7 @@ export function RoomScreen({
           <li>每位玩家初始 5 张手牌，其中 1 张拆除（消火）。</li>
           <li>炸弹猫数量：2 人 2 张、3 人 2 张、4 人 3 张、5 人 4 张。</li>
           <li>拆除放回：2 人局仅放回 2 张，3 至 5 人局全部放回。</li>
-          <li>起始玩家由房主指定，本页面由你担任房主。</li>
+          <li>起始玩家自动确定：新开一局为房主，后续对局为上一局胜者。</li>
         </ul>
       </section>
     </div>

@@ -67,7 +67,7 @@ export function App() {
   }, [refresh]);
 
   const createRoom = useCallback(
-    (count: PlayerCount, name: string, seed: number | undefined, startSeat: number) => {
+    (count: PlayerCount, name: string, seed: number | undefined, startSeat = 1) => {
       const seat = Math.min(Math.max(1, startSeat), count);
       const engine = GameEngine.createRoom({
         targetPlayerCount: count,
@@ -76,9 +76,6 @@ export function App() {
       });
       engineRef.current = engine;
       configRef.current = { count, name, seed, startSeat: seat };
-      if (seat === 1) {
-        engine.apply({ type: 'SET_START_PLAYER', playerId: ME, startPlayerId: ME }, newActionId());
-      }
       setStuck(false);
       setBotError('');
       setView(getGameView(engine, ME));
@@ -169,19 +166,18 @@ export function App() {
 
   const restart = () => {
     const config = configRef.current;
-    const engine = engineRef.current;
-    const startSeat = engine?.state.startPlayerId
-      ? engine.state.players.find((p) => p.id === engine.state.startPlayerId)?.seat ?? config.startSeat
-      : config.startSeat;
-    createRoom(config.count, config.name, config.seed, startSeat);
+    const winnerSeat = view?.winnerPlayerId
+      ? view.players.find((p) => p.id === view.winnerPlayerId)?.seat ?? 1
+      : 1;
+    createRoom(config.count, config.name, config.seed, winnerSeat);
   };
 
   const returnToRoom = useCallback(() => {
     const config = configRef.current;
     const engine = engineRef.current;
-    const startSeat = engine?.state.startPlayerId
-      ? engine.state.players.find((p) => p.id === engine.state.startPlayerId)?.seat ?? config.startSeat
-      : config.startSeat;
+    const winnerSeat = engine?.state.winnerPlayerId
+      ? engine.state.players.find((p) => p.id === engine.state.winnerPlayerId)?.seat ?? 1
+      : 1;
     const next = GameEngine.createRoom({
       targetPlayerCount: config.count,
       hostName: config.name,
@@ -190,9 +186,11 @@ export function App() {
     for (let seat = 2; seat <= config.count; seat += 1) {
       next.apply({ type: 'JOIN_ROOM', isBot: true, name: '', playerId: `p${seat}` }, newActionId());
     }
-    next.apply({ type: 'SET_START_PLAYER', playerId: ME, startPlayerId: `p${startSeat}` }, newActionId());
+    if (winnerSeat > 1) {
+      next.apply({ type: 'SET_START_PLAYER', playerId: ME, startPlayerId: `p${winnerSeat}` }, newActionId());
+    }
     engineRef.current = next;
-    configRef.current = { ...config, startSeat };
+    configRef.current = { ...config, startSeat: winnerSeat };
     setStuck(false);
     setBotError('');
     setView(getGameView(next, ME));
@@ -236,10 +234,6 @@ export function App() {
           view={view}
           onJoinBot={joinBot}
           onToggleReady={() => apply({ type: 'SET_READY', playerId: ME, ready: !view.myReady })}
-          onSetStartPlayer={(playerId) => {
-            if (!playerId) return;
-            apply({ type: 'SET_START_PLAYER', playerId: ME, startPlayerId: playerId });
-          }}
           onStart={() => apply({ type: 'START_GAME', playerId: ME })}
           onBack={backHome}
         />

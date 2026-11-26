@@ -1,7 +1,7 @@
 import { useState } from 'react';
 
 interface HomeScreenProps {
-  onCreate: (count: 2 | 3 | 4 | 5, name: string, seed: number | undefined, startSeat: number) => void;
+  onCreate: (count: 2 | 3 | 4 | 5, name: string, seed: number | undefined) => void;
   onDemo: () => void;
   hasSavedGame: boolean;
   onContinue: () => void;
@@ -54,17 +54,10 @@ export function HomeScreen({ onCreate, onDemo, hasSavedGame, onContinue }: HomeS
   const [count, setCount] = useState<2 | 3 | 4 | 5>(4);
   const [name, setName] = useState('我');
   const [seed, setSeed] = useState('');
-  const [startSeat, setStartSeat] = useState(1);
   const [rulesOpen, setRulesOpen] = useState(false);
-
-  const displayName = name.trim() || '我';
-  const seatLabel = (seat: number) => (
-    seat === 1 ? displayName : `模拟玩家 ${String.fromCharCode(64 + seat)}`
-  );
 
   const chooseCount = (value: 2 | 3 | 4 | 5) => {
     setCount(value);
-    if (startSeat > value) setStartSeat(1);
   };
 
   const submit = () => {
@@ -74,7 +67,6 @@ export function HomeScreen({ onCreate, onDemo, hasSavedGame, onContinue }: HomeS
       count,
       trimmed || '我',
       Number.isFinite(seedValue) ? seedValue : undefined,
-      Math.min(startSeat, count),
     );
   };
 
@@ -129,16 +121,6 @@ export function HomeScreen({ onCreate, onDemo, hasSavedGame, onContinue }: HomeS
           </div>
         </div>
         <label className="field">
-          <span>起始玩家（开局前指定）</span>
-          <select value={startSeat} onChange={(event) => setStartSeat(Number(event.target.value))}>
-            {COUNTS.filter((value) => value <= count).map((seat) => (
-              <option key={seat} value={seat}>
-                {seatLabel(seat)}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="field">
           <span>随机种子（可选，用于复现对局）</span>
           <input
             value={seed}
@@ -157,7 +139,7 @@ export function HomeScreen({ onCreate, onDemo, hasSavedGame, onContinue }: HomeS
           查看规则
         </button>
         <p className="panel__note">
-          目标人数创建后不可修改。起始玩家可在此预选，进入房间后仍可由房主调整；达到目标人数且全员准备后才能开始。
+          目标人数创建后不可修改。起始玩家由系统确定：新开一局为房主，后续对局为上一局胜者。达到目标人数且全员准备后才能开始。
         </p>
       </section>
 
