@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   CARD_NAME_OPTIONS,
   cardDisplayName,
@@ -73,9 +73,14 @@ export function TableScreen({
   const [note, setNote] = useState('');
   const [insertValue, setInsertValue] = useState('1');
   const [confirmAbandon, setConfirmAbandon] = useState(false);
+  const [eliminatedDismissed, setEliminatedDismissed] = useState(false);
+  const logRef = useRef<HTMLDivElement | null>(null);
+  const logFollowRef = useRef(true);
 
   const pending = view.pending;
   const me = view.myPlayerId;
+  const myAlive = view.players.find((p) => p.id === me)?.alive ?? true;
+  const latestSeq = view.events.length > 0 ? view.events[view.events.length - 1]!.seq : 0;
   const opponents = view.players.filter((p) => p.id !== me);
   const discardTop = view.discardPile[view.discardPile.length - 1];
   const selectedCards = useMemo(
@@ -103,6 +108,16 @@ export function TableScreen({
       setInsertValue(String(view.drawPileCount + 1));
     }
   }, [pending?.awaiting, pending?.id, view.drawPileCount]);
+
+  useEffect(() => {
+    if (myAlive) setEliminatedDismissed(false);
+  }, [myAlive]);
+
+  useEffect(() => {
+    const element = logRef.current;
+    if (!element || !logFollowRef.current) return;
+    element.scrollTop = element.scrollHeight;
+  }, [latestSeq]);
 
   const toggleCard = (cardId: string) => {
     if (!view.canAct) return;
@@ -175,6 +190,9 @@ export function TableScreen({
             {view.isMyTurn ? <span className="tag tag--mine">你的回合</span> : null}
             {view.turnsRemaining > 1 ? <span className="tag tag--attack">剩余 {view.turnsRemaining} 回合</span> : null}
           </h2>
+          {!myAlive && view.phase === 'playing' ? (
+            <p className="hint hint--warn">你已被淘汰，正在观战。</p>
+          ) : null}
         </div>
         <div className="piles">
           <div className="pile">
@@ -257,7 +275,15 @@ export function TableScreen({
             </p>
           )}
 
-          <div className="event-log">
+          <div
+            className="event-log"
+            ref={logRef}
+            aria-live="polite"
+            onScroll={(event) => {
+              const el = event.currentTarget;
+              logFollowRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
+            }}
+          >
             {view.events.slice(-40).map((event) => (
               <p key={event.seq} className={`event event--${event.kind}`}>
                 <span>{String(event.seq).padStart(2, '0')}</span>
@@ -506,6 +532,24 @@ export function TableScreen({
               onClick={() => onInsertBomb(insertPosition - 1)}
             >
               确认放回
+            </button>
+          </div>
+        </Modal>
+      ) : null}
+
+      {!myAlive && view.phase === 'playing' && !eliminatedDismissed ? (
+        <Modal title="你已被淘汰">
+          <p className="modal__desc">
+            你抽到炸弹猫且没有打出拆除，已退出本局。你的手牌已移出，无法继续出牌或抽牌。
+          </p>
+          <p className="hint">对局仍在进行，你可以继续观战直到结算。</p>
+          <div className="modal__actions">
+            <button
+              type="button"
+              className="btn btn--primary"
+              onClick={() => setEliminatedDismissed(true)}
+            >
+              继续观战
             </button>
           </div>
         </Modal>
