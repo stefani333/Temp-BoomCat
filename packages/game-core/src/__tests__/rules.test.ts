@@ -29,7 +29,6 @@ function startGame(playerCount: 2 | 3 | 4 | 5, seed = 20261123): GameEngine {
   for (const player of engine.state.players) {
     engine.apply({ type: 'SET_READY', playerId: player.id, ready: true });
   }
-  engine.apply({ type: 'SET_START_PLAYER', playerId: 'p1', startPlayerId: 'p1' });
   const result = engine.apply({ type: 'START_GAME', playerId: 'p1' });
   expect(result.ok).toBe(true);
   return engine;
@@ -109,7 +108,7 @@ describe('卡牌定义与开局', () => {
     expect(countCards(state)).toBe(56);
   });
 
-  it('未达到开始条件时拒绝开始游戏', () => {
+  it('未达到开始条件时拒绝开始游戏，新开一局默认房主先手', () => {
     const engine = GameEngine.createRoom({ targetPlayerCount: 3, seed: 1 });
     engine.apply({ type: 'JOIN_ROOM', name: '机器人 B', isBot: true });
     expect(engine.blockReason()).toBe('人数不足');
@@ -118,11 +117,21 @@ describe('卡牌定义与开局', () => {
     for (const p of engine.state.players) {
       engine.apply({ type: 'SET_READY', playerId: p.id, ready: true });
     }
-    expect(engine.blockReason()).toBe('请指定起始玩家');
-    engine.apply({ type: 'SET_START_PLAYER', playerId: 'p1', startPlayerId: 'p2' });
     expect(engine.blockReason()).toBeNull();
     const result = engine.apply({ type: 'START_GAME', playerId: 'p1' });
     expect(result.ok).toBe(true);
+    expect(engine.state.startPlayerId).toBe('p1');
+    expect(engine.state.currentPlayerId).toBe('p1');
+  });
+
+  it('上一局胜者可被设为下一局起始玩家', () => {
+    const engine = GameEngine.createRoom({ targetPlayerCount: 2, seed: 1 });
+    engine.apply({ type: 'JOIN_ROOM', name: '机器人 B', isBot: true });
+    for (const p of engine.state.players) {
+      engine.apply({ type: 'SET_READY', playerId: p.id, ready: true });
+    }
+    expect(engine.apply({ type: 'SET_START_PLAYER', playerId: 'p1', startPlayerId: 'p2' }).ok).toBe(true);
+    expect(engine.apply({ type: 'START_GAME', playerId: 'p1' }).ok).toBe(true);
     expect(engine.state.currentPlayerId).toBe('p2');
   });
 

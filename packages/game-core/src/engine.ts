@@ -210,7 +210,7 @@ export class GameEngine {
     const target = this.player(action.startPlayerId);
     if (!target) return this.fail('起始玩家不在房间内');
     this.state.startPlayerId = target.id;
-    this.logEvent('room', `房主指定 ${target.name} 为起始玩家`);
+    this.logEvent('room', `起始玩家：${target.name}`);
     return { ok: true };
   }
 
@@ -218,8 +218,6 @@ export class GameEngine {
     if (this.state.phase !== 'lobby') return '对局已开始';
     if (this.state.players.length < this.state.targetPlayerCount) return '人数不足';
     if (this.state.players.some((p) => !p.ready)) return '有玩家未准备';
-    if (!this.state.startPlayerId) return '请指定起始玩家';
-    if (!this.player(this.state.startPlayerId)) return '起始玩家不在房间内';
     return null;
   }
 
@@ -227,14 +225,17 @@ export class GameEngine {
     if (action.playerId !== this.state.hostId) return this.fail('仅房主可以开始游戏');
     const reason = this.startBlockReason();
     if (reason) return this.fail(reason);
+    const preferred = this.state.startPlayerId ? this.player(this.state.startPlayerId) : undefined;
+    const startPlayer = preferred ?? this.player(this.state.hostId ?? '');
+    if (!startPlayer) return this.fail('缺少起始玩家');
+    this.state.startPlayerId = startPlayer.id;
     this.state.phase = 'playing';
     this.setupDeck();
-    this.state.currentPlayerId = this.state.startPlayerId;
+    this.state.currentPlayerId = startPlayer.id;
     this.state.turnsRemaining = 1;
     this.state.turnNumber = 1;
     this.state.cardsPlayedThisTurn = 0;
-    const startPlayer = this.player(this.state.startPlayerId ?? '');
-    this.logEvent('game', `对局开始，共 ${this.state.players.length} 人，起始玩家 ${startPlayer?.name ?? ''}`);
+    this.logEvent('game', `对局开始，共 ${this.state.players.length} 人，起始玩家 ${startPlayer.name}`);
     return { ok: true };
   }
 
