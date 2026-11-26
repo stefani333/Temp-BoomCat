@@ -223,6 +223,8 @@ try {
   log('选择 3 人局');
   if (!(await clickText('3 人'))) throw new Error('未找到 3 人按钮');
   await sleep(300);
+  const homeSelects = await evaluate(`document.querySelectorAll('select').length`);
+  if (homeSelects !== 0) throw new Error('首页仍存在起始玩家选择入口');
   log('验证首页规则入口');
   if (!(await clickText('查看规则'))) throw new Error('未找到查看规则按钮');
   await sleep(400);
@@ -240,21 +242,15 @@ try {
   if (!(await clickText('加入模拟玩家'))) throw new Error('未找到加入模拟玩家按钮');
   await sleep(500);
 
-  log('准备并指定起始玩家');
+  const roomSelects = await evaluate(`document.querySelectorAll('select').length`);
+  const roomBody = await evaluate(`document.body.innerText`);
+  if (roomSelects !== 0 || roomBody.includes('请指定起始玩家') || roomBody.includes('未指定起始玩家')) {
+    throw new Error('房间页仍存在起始玩家指定入口或提示');
+  }
+
+  log('准备并开始游戏');
   if (!(await clickText('我准备'))) throw new Error('未找到准备按钮');
   await sleep(400);
-  const selected = await evaluate(
-    `(() => {
-      const select = document.querySelector('select');
-      if (!select) return false;
-      const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set;
-      setter.call(select, 'p1');
-      select.dispatchEvent(new Event('change', { bubbles: true }));
-      return true;
-    })()`,
-  );
-  if (!selected) throw new Error('未找到起始玩家选择框');
-  await sleep(500);
   const startEnabled = await evaluate(
     `(() => [...document.querySelectorAll('button')]
       .some((el) => el.textContent.includes('开始游戏') && !el.disabled))()`,
@@ -268,6 +264,38 @@ try {
   log('牌桌初始状态：', JSON.stringify({ hand: snap.handCount, current: snap.current, draw: snap.drawPile }));
   if (!snap.table || snap.handCount !== 5) throw new Error('牌桌未正确显示 5 张初始手牌');
   if (!snap.myTurn) throw new Error('起始玩家不是本人');
+
+  log('验证本人淘汰提示（构造已淘汰快照）');
+  const snapshotRaw = await evaluate(`localStorage.getItem('bombcat:game-snapshot:v1')`);
+  if (!snapshotRaw) throw new Error('未找到本地对局快照');
+  const snapshotObj = JSON.parse(snapshotRaw);
+  const state = snapshotObj.state;
+  const meSeat = state.players.find((player) => player.id === 'p1');
+  const aliveSeat = state.players.find((player) => player.id !== 'p1' && player.alive);
+  if (!meSeat || !aliveSeat) throw new Error('快照缺少玩家数据');
+  meSeat.alive = false;
+  meSeat.hand = [];
+  state.pending = null;
+  state.currentPlayerId = aliveSeat.id;
+  state.turnsRemaining = 1;
+  const mutatedRaw = JSON.stringify(snapshotObj);
+  await evaluate(`localStorage.setItem('bombcat:game-snapshot:v1', ${JSON.stringify(mutatedRaw)})`);
+  await send('Page.reload');
+  await sleep(1600);
+  if (!(await clickText('继续上局'))) throw new Error('淘汰快照恢复时未找到继续上局按钮');
+  await sleep(1200);
+  const eliminatedText = await evaluate(`document.body.innerText`);
+  if (!eliminatedText.includes('你已被淘汰')) throw new Error('本人页面未显示淘汰提示');
+  if (!(await clickText('继续观战'))) throw new Error('淘汰提示缺少继续观战按钮');
+  await sleep(400);
+  const spectatorText = await evaluate(`document.body.innerText`);
+  if (!spectatorText.includes('正在观战')) throw new Error('关闭提示后未显示观战状态');
+  log('淘汰提示与观战状态验证通过');
+  await evaluate(`localStorage.setItem('bombcat:game-snapshot:v1', ${JSON.stringify(snapshotRaw)})`);
+  await send('Page.reload');
+  await sleep(1600);
+  if (!(await clickText('继续上局'))) throw new Error('恢复原快照时未找到继续上局按钮');
+  await sleep(1200);
 
   log('验证本地恢复：刷新页面');
   await send('Page.reload');
@@ -287,12 +315,35 @@ try {
 
   let playedCard = false;
   let sawBotAction = false;
+  let logFollowChecked = false;
   let lastLogCount = snap.logCount;
   let result = '';
 
   for (let step = 1; step <= 80; step += 1) {
     snap = await snapshot();
     if (snap.logCount > lastLogCount) lastLogCount = snap.logCount;
+    if (!logFollowChecked && snap.logCount >= 8) {
+      const logState = await evaluate(
+        `(() => {
+          const el = document.querySelector('.event-log');
+          if (!el) return null;
+          return {
+            scrollTop: el.scrollTop,
+            max: el.scrollHeight - el.clientHeight,
+            lastText: [...el.querySelectorAll('.event')].slice(-1)[0]?.innerText || '',
+          };
+        })()`,
+      );
+      if (logState && logState.max > 0) {
+        if (logState.scrollTop < logState.max - 4) throw new Error('对局日志未自动定位到最新一条');
+        const expectedTail = snap.logTail[snap.logTail.length - 1] || '';
+        if (!logState.lastText.includes(expectedTail.split('\n')[0])) {
+          throw new Error('对局日志末条与最新事件不一致');
+        }
+        logFollowChecked = true;
+        log('日志自动滚动验证通过，末条：', logState.lastText.split('\n')[0]);
+      }
+    }
     if (snap.result) {
       result = snap.result;
       log(`第 ${step} 轮：对局结束，获胜者 ${result}`);
@@ -352,6 +403,7 @@ try {
     handCountAtStart: 5,
     sawBotAction,
     playedCardInUi: playedCard,
+    logFollowChecked,
     returnedRoom,
     result,
     current: snap.current,
