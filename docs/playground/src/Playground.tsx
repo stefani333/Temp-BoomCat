@@ -3,7 +3,6 @@ import {
   DEFAULT_SETUP,
   PLAYER_NAMES,
   makeDemoTable,
-  makeFullReadySeats,
   makeSeats,
   makeTableFromSeats,
 } from './game';
@@ -54,14 +53,7 @@ export default function Playground() {
   }, [pageId]);
 
   const updateSetup = (patch: Partial<Setup>) => {
-    setSetup((prev) => {
-      const next = { ...prev, ...patch };
-      const allowed = ['p1', 'p2', 'p3', 'p4', 'p5'].slice(0, next.target);
-      if (next.starterId && !allowed.includes(next.starterId)) {
-        next.starterId = '';
-      }
-      return next;
-    });
+    setSetup((prev) => ({ ...prev, ...patch }));
   };
 
   const openPage = (target: PageMeta) => {
@@ -108,7 +100,7 @@ export default function Playground() {
   };
 
   const startGame = () => {
-    setTable(makeTableFromSeats(seats, setup.starterId));
+    setTable(makeTableFromSeats(seats));
     setScene('table');
     setPageId(device === 'desktop' ? 'table-desktop' : 'table-mobile');
   };
@@ -133,7 +125,7 @@ export default function Playground() {
   };
 
   const restartGame = () => {
-    setTable(makeTableFromSeats(seats, setup.starterId));
+    setTable(makeTableFromSeats(seats));
     setScene('table');
     setPageId(device === 'desktop' ? 'table-desktop' : 'table-mobile');
   };
@@ -151,16 +143,28 @@ export default function Playground() {
   const gotoEdgeCase = (key: EdgeCaseKey) => {
     switch (key) {
       case 'underfilled':
-        setSetup((prev) => ({ ...prev, target: 4, starterId: '' }));
+        setSetup((prev) => ({ ...prev, target: 4 }));
         setSeats(makeSeats(4).slice(0, 2));
         setScene('lobby');
         setPageId('lobby');
         break;
-      case 'no-starter':
-        setSetup((prev) => ({ ...prev, target: 4, starterId: '' }));
-        setSeats(makeFullReadySeats(4));
-        setScene('lobby');
-        setPageId('lobby');
+      case 'eliminated':
+        setTable({
+          ...makeDemoTable(),
+          seats: makeDemoTable().seats.map((seat) =>
+            seat.id === 'p1' ? { ...seat, alive: false, handCount: 0 } : seat,
+          ),
+          hand: [],
+          currentId: 'p2',
+          log: [
+            ...makeDemoTable().log,
+            '我抽到炸弹猫，未持有拆除',
+            '我被淘汰，可继续观战',
+          ],
+        });
+        setDevice('phone');
+        setScene('table');
+        setPageId('table-mobile');
         break;
       case 'bot-turn':
         setTable((prev) => ({
@@ -218,7 +222,6 @@ export default function Playground() {
         <LobbyScene
           setup={setup}
           seats={seats}
-          onSetupChange={updateSetup}
           onToggleReady={toggleReady}
           onJoin={joinBot}
           onStart={startGame}

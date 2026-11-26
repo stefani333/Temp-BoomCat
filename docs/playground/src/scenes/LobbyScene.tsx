@@ -3,7 +3,6 @@ import type { Seat, Setup } from '../types';
 interface LobbySceneProps {
   setup: Setup;
   seats: Seat[];
-  onSetupChange: (patch: Partial<Setup>) => void;
   onToggleReady: (seatId: string) => void;
   onJoin: () => void;
   onStart: () => void;
@@ -13,7 +12,6 @@ interface LobbySceneProps {
 export function LobbyScene({
   setup,
   seats,
-  onSetupChange,
   onToggleReady,
   onJoin,
   onStart,
@@ -23,13 +21,11 @@ export function LobbyScene({
   const me = joined.find((seat) => seat.id === 'p1');
   const full = joined.length >= setup.target;
   const allReady = full && joined.every((seat) => seat.ready);
-  const hasStarter = Boolean(setup.starterId) && joined.some((seat) => seat.id === setup.starterId);
-  const canStart = full && allReady && hasStarter;
+  const canStart = full && allReady;
 
   const blockers: string[] = [];
   if (!full) blockers.push(`人数不足，还差 ${setup.target - joined.length} 人`);
   if (!allReady) blockers.push('有玩家未准备');
-  if (!hasStarter) blockers.push('请指定起始玩家');
 
   return (
     <div className="wf-screen lobby-screen">
@@ -85,21 +81,10 @@ export function LobbyScene({
           </div>
 
           <div className="lobby-config">
-            <label className="wf-field">
+            <div className="wf-field">
               <span className="wf-label">起始玩家</span>
-              <select
-                className="wf-input"
-                value={hasStarter ? setup.starterId : ''}
-                onChange={(event) => onSetupChange({ starterId: event.target.value })}
-              >
-                <option value="">未指定</option>
-                {joined.map((seat) => (
-                  <option key={seat.id} value={seat.id}>
-                    {seat.name}
-                  </option>
-                ))}
-              </select>
-            </label>
+              <p className="wf-help">系统自动确定：新开一局为房主，后续对局为上一局胜者。</p>
+            </div>
             <div className="lobby-count">
               <span className="wf-label">人数</span>
               <strong>
@@ -115,7 +100,7 @@ export function LobbyScene({
               ))}
             </div>
           ) : (
-            <div className="wf-hint wf-hint--quiet">人数已满、全员已准备、起始玩家已指定，可以开始游戏。</div>
+            <div className="wf-hint wf-hint--quiet">人数已满、全员已准备，起始玩家由系统自动确定，可以开始游戏。</div>
           )}
 
           <div className="lobby-actions">

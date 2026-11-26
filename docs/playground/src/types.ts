@@ -41,7 +41,6 @@ export interface Seat {
 
 export interface Setup {
   target: PlayerCount;
-  starterId: string;
   seed: string;
 }
 

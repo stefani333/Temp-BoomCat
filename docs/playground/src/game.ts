@@ -15,7 +15,6 @@ export const PLAYER_NAMES = ['我', '模拟玩家 A', '模拟玩家 B', '模拟�
 
 export const DEFAULT_SETUP: Setup = {
   target: 4,
-  starterId: '',
   seed: '',
 };
 
@@ -82,19 +81,6 @@ export function makeSeats(target: number): Seat[] {
   return seats;
 }
 
-/** 空态演示用：座位已满且全员已准备，但起始玩家未指定 */
-export function makeFullReadySeats(target: PlayerCount): Seat[] {
-  return Array.from({ length: target }, (_, index) => ({
-    id: PLAYER_IDS[index]!,
-    name: PLAYER_NAMES[index]!,
-    kind: index === 0 ? ('me' as const) : ('bot' as const),
-    host: index === 0,
-    ready: true,
-    alive: true,
-    handCount: 0,
-  }));
-}
-
 /** 牌桌默认演示数据，贴近线框稿中的对局快照，同时保留可点击状态 */
 export function makeDemoTable(): TableState {
   return {
@@ -121,7 +107,7 @@ export function makeDemoTable(): TableState {
   };
 }
 
-export function makeTableFromSeats(seats: Seat[], starterId: string): TableState {
+export function makeTableFromSeats(seats: Seat[]): TableState {
   const joined = seats
     .filter((seat) => Boolean(seat.id))
     .map((seat) => ({
@@ -130,7 +116,7 @@ export function makeTableFromSeats(seats: Seat[], starterId: string): TableState
       alive: true,
       handCount: seat.kind === 'me' ? INITIAL_HAND.length : 4,
     }));
-  const starter = joined.find((seat) => seat.id === starterId);
+  const starter = joined.find((seat) => seat.id === ME);
   return {
     round: 1,
     currentId: starter?.id ?? ME,

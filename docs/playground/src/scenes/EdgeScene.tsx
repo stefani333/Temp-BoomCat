@@ -1,6 +1,6 @@
 export type EdgeCaseKey =
   | 'underfilled'
-  | 'no-starter'
+  | 'eliminated'
   | 'bot-turn'
   | 'empty-discard'
   | 'no-defuse'
@@ -22,10 +22,10 @@ const CASES: EdgeCase[] = [
     copy: '提示还差 N 人，开始按钮禁用。',
   },
   {
-    key: 'no-starter',
-    title: '未指定起始玩家',
-    location: '房间等待',
-    copy: '提示请指定起始玩家，开始按钮禁用。',
+    key: 'eliminated',
+    title: '本人已被淘汰',
+    location: '牌桌',
+    copy: '本人页面显示已被淘汰提示，可继续观战，无法再出牌或抽牌。',
   },
   {
     key: 'bot-turn',

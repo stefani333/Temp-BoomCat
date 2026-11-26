@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { PLAYER_IDS, PLAYER_NAMES } from '../game';
 import type { PlayerCount, Setup } from '../types';
 import { Modal } from '../ui';
 
@@ -13,10 +12,6 @@ interface HomeSceneProps {
 
 export function HomeScene({ setup, onChange, onEnterLobby }: HomeSceneProps) {
   const [rulesOpen, setRulesOpen] = useState(false);
-  const starterOptions = PLAYER_IDS.slice(0, setup.target).map((id, index) => ({
-    id,
-    name: PLAYER_NAMES[index]!,
-  }));
 
   return (
     <div className="wf-screen home-screen">
@@ -52,22 +47,7 @@ export function HomeScene({ setup, onChange, onEnterLobby }: HomeSceneProps) {
               <p className="wf-help">目标人数创建后锁定，房间内不提供修改入口。</p>
             </div>
 
-            <label className="wf-field">
-              <span className="wf-label">起始玩家（开局前指定）</span>
-              <select
-                className="wf-input"
-                value={setup.starterId}
-                onChange={(event) => onChange({ starterId: event.target.value })}
-              >
-                <option value="">未指定</option>
-                {starterOptions.map((option) => (
-                  <option key={option.id} value={option.id}>
-                    {option.name}
-                  </option>
-                ))}
-              </select>
-              <span className="wf-help">未指定起始玩家时，房间内无法开始游戏。</span>
-            </label>
+            <p className="wf-help">起始玩家由系统自动确定：新开一局为房主，后续对局为上一局胜者。</p>
 
             <label className="wf-field">
               <span className="wf-label">随机种子（可选）</span>
@@ -91,7 +71,7 @@ export function HomeScene({ setup, onChange, onEnterLobby }: HomeSceneProps) {
               <li>本地对局，真人 1 席</li>
               <li>模拟玩家自动补位</li>
               <li>支持 2 至 5 人</li>
-              <li>起始玩家开局前指定</li>
+              <li>起始玩家自动确定（房主或上一局胜者）</li>
               <li>随机种子用于复现对局</li>
             </ul>
             <div className="wf-note">

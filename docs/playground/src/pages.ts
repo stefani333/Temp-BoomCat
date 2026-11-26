@@ -6,7 +6,7 @@ export const PAGES: PageMeta[] = [
     no: 1,
     title: '首页与创建房间',
     group: '流程',
-    summary: '创建本地对局：目标人数、起始玩家、随机种子。',
+    summary: '创建本地对局：目标人数、随机种子。',
     screen: 'home',
   },
   {
@@ -14,7 +14,7 @@ export const PAGES: PageMeta[] = [
     no: 2,
     title: '房间等待与准备',
     group: '流程',
-    summary: '座位列表、准备状态、起始玩家与开始条件。',
+    summary: '座位列表、准备状态与开始条件，起始玩家由系统自动确定。',
     screen: 'lobby',
   },
   {
@@ -154,7 +154,7 @@ export const PAGES: PageMeta[] = [
     no: 16,
     title: '空态与异常提示',
     group: '状态',
-    summary: '人数不足、未指定起始玩家、非本人回合等七类状态入口。',
+    summary: '人数不足、本人已被淘汰、非本人回合等七类状态入口。',
     screen: 'edge',
   },
 ];
