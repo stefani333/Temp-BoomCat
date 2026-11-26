@@ -1,4 +1,5 @@
 import type {
+  DemoOutcome,
   HandCard,
   PlayerCount,
   ResultData,
@@ -9,13 +10,12 @@ import type {
 
 export const ME = 'p1';
 
-export const PLAYER_IDS = ['p1', 'p2', 'p3', 'p4', 'p5'];
-
 export const PLAYER_NAMES = ['我', '模拟玩家 A', '模拟玩家 B', '模拟玩家 C', '模拟玩家 D'];
 
 export const DEFAULT_SETUP: Setup = {
   target: 4,
   seed: '',
+  nickname: '我',
 };
 
 export const INITIAL_HAND: HandCard[] = [
@@ -29,6 +29,7 @@ export const INITIAL_HAND: HandCard[] = [
   {
     id: 'c-foresee',
     name: '预见未来',
+    fullName: '预见未来（幻觉）',
     kind: 'action',
     effect: '查看抽牌堆顶部三张，按原顺序放回',
   },
@@ -66,14 +67,21 @@ export const INITIAL_HAND: HandCard[] = [
   },
 ];
 
-/** 房间等待页的初始座位：我、模拟玩家 A 已准备，模拟玩家 B 未准备，其余为空位 */
+/** 房间等待页初始座位：房主未准备，先加入的模拟玩家已自动准备，其余为空位 */
 export function makeSeats(target: number): Seat[] {
   const seats: Seat[] = [
-    { id: 'p1', name: '我', kind: 'me', host: true, ready: true, alive: true, handCount: 0 },
-    { id: 'p2', name: '模拟玩家 A', kind: 'bot', ready: true, alive: true, handCount: 0 },
+    { id: 'p1', name: '我', kind: 'me', host: true, ready: false, alive: true, handCount: 0 },
   ];
-  if (target >= 3) {
-    seats.push({ id: 'p3', name: '模拟玩家 B', kind: 'bot', ready: false, alive: true, handCount: 0 });
+  const botCount = Math.min(2, target - 1);
+  for (let index = 0; index < botCount; index += 1) {
+    seats.push({
+      id: `p${seats.length + 1}`,
+      name: PLAYER_NAMES[seats.length] ?? `模拟玩家 ${seats.length}`,
+      kind: 'bot',
+      ready: true,
+      alive: true,
+      handCount: 0,
+    });
   }
   while (seats.length < target) {
     seats.push({ id: '', name: '空位', kind: 'bot', ready: false, alive: true, handCount: 0 });
@@ -81,9 +89,10 @@ export function makeSeats(target: number): Seat[] {
   return seats;
 }
 
-/** 牌桌默认演示数据，贴近线框稿中的对局快照，同时保留可点击状态 */
+/** 牌桌默认演示数据，贴近线上对局快照，同时保留可点击状态 */
 export function makeDemoTable(): TableState {
   return {
+    roomId: 'LOCAL-0001',
     round: 3,
     currentId: ME,
     drawPile: 27,
@@ -98,11 +107,18 @@ export function makeDemoTable(): TableState {
     ],
     hand: INITIAL_HAND.map((card) => ({ ...card })),
     log: [
-      '第 3 轮开始',
-      '模拟玩家 A 打出恩惠，指定模拟玩家 B',
+      '第 3 回合开始，当前玩家：我',
+      '模拟玩家 A 打出恩惠（调情），指定模拟玩家 B',
       '模拟玩家 B 交出一张手牌',
+      '我打出两张汉堡猫咪，随机获得模拟玩家 A 一张手牌',
+      '模拟玩家 C 使用预见未来（幻觉），查看牌堆顶部三张',
       '模拟玩家 C 抽到炸弹猫，未持有拆除',
-      '模拟玩家 C 被淘汰',
+      '模拟玩家 C 被淘汰，全部手牌移出本局',
+      '模拟玩家 B 打出攻击（高潮），下一位玩家需进行两个回合',
+      '模拟玩家 A 未使用休想，攻击生效',
+      '模拟玩家 A 抽牌，回合结束',
+      '模拟玩家 B 抽牌，回合结束',
+      '轮到我了：可以出牌或抽牌结束本回合',
     ],
   };
 }
@@ -118,6 +134,7 @@ export function makeTableFromSeats(seats: Seat[]): TableState {
     }));
   const starter = joined.find((seat) => seat.id === ME);
   return {
+    roomId: 'LOCAL-0001',
     round: 1,
     currentId: starter?.id ?? ME,
     drawPile: 27,
@@ -134,26 +151,57 @@ export function makeTableFromSeats(seats: Seat[]): TableState {
 }
 
 export const DEFAULT_RESULT: ResultData = {
+  roomId: 'LOCAL-0001',
+  turnNumber: 9,
   winner: '模拟玩家 B',
-  rounds: 9,
   survivors: 1,
+  participants: 4,
+  players: [
+    { id: 'p1', name: '我', isBot: false, alive: false, winner: false },
+    { id: 'p2', name: '模拟玩家 A', isBot: true, alive: false, winner: false },
+    { id: 'p3', name: '模拟玩家 B', isBot: true, alive: true, winner: true },
+    { id: 'p4', name: '模拟玩家 C', isBot: true, alive: false, winner: false },
+  ],
   keyEvents: [
-    '模拟玩家 C 抽到炸弹猫，无拆除',
+    '模拟玩家 C 抽到炸弹猫，未持有拆除',
     '模拟玩家 C 被淘汰',
     '模拟玩家 B 成为最后存活玩家',
   ],
   log: [
-    '第 1 轮开始，起始玩家：我',
-    '我打出跳过，回合结束',
+    '房间锁定，对局开始',
+    '起始玩家：我',
+    '我打出跳过（逃脱），回合结束',
     '模拟玩家 A 抽牌，回合结束',
     '模拟玩家 B 打出两张汉堡猫咪，获得模拟玩家 A 一张手牌',
-    '模拟玩家 C 使用预见未来，查看牌堆顶部三张',
-    '我打出恩惠，模拟玩家 A 交出一张手牌',
+    '模拟玩家 C 使用预见未来（幻觉），查看牌堆顶部三张',
+    '我打出恩惠（调情），模拟玩家 A 交出一张手牌',
     '模拟玩家 C 抽到炸弹猫，未持有拆除',
-    '模拟玩家 C 被淘汰',
-    '模拟玩家 A 抽到炸弹猫，使用拆除并放回牌堆顶部',
+    '模拟玩家 C 被淘汰，全部手牌移出本局',
+    '模拟玩家 A 抽到炸弹猫，使用拆除并秘密放回牌堆',
     '模拟玩家 B 抽牌，回合结束',
-    '第 9 轮，模拟玩家 B 成为最后存活玩家',
+    '模拟玩家 B 成为最后存活玩家',
+  ],
+};
+
+export const DEFAULT_DEMO: DemoOutcome = {
+  finished: true,
+  winner: '模拟玩家 B',
+  steps: 87,
+  participants: 4,
+  survivors: 1,
+  log: [
+    '房间锁定，对局开始',
+    '起始玩家：模拟玩家 A',
+    '模拟玩家 A 抽牌，回合结束',
+    '模拟玩家 B 打出恩惠（调情），指定模拟玩家 C',
+    '模拟玩家 C 交出一张手牌',
+    '我打出跳过（逃脱），回合结束',
+    '模拟玩家 C 抽到炸弹猫，使用拆除并秘密放回牌堆',
+    '模拟玩家 A 打出攻击（高潮）',
+    '模拟玩家 B 未使用休想，攻击生效',
+    '我抽到炸弹猫，未持有拆除',
+    '我被淘汰，全部手牌移出本局',
+    '模拟玩家 B 成为最后存活玩家',
   ],
 };
 

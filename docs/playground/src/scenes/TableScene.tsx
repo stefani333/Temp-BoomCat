@@ -1,12 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { displayName } from '../game';
 import type { CardKind, HandCard, OverlayKind, TableState } from '../types';
 import { Modal } from '../ui';
 
-type Classification =
-  | { kind: 'single'; card: HandCard }
-  | { kind: 'comboTwo' | 'comboThree' | 'comboFive' }
-  | { kind: 'error'; message: string };
+type PlayKind = 'single' | 'comboTwo' | 'comboThree' | 'comboFive';
+type Classification = { kind: PlayKind } | { error: string };
 
 const KIND_LABEL: Record<CardKind, string> = {
   action: '行动',
@@ -32,37 +30,47 @@ const GUESS_NAMES = [
   '炸鸡猫咪',
 ];
 
-const DISCARD_CARDS = ['跳过', '恩惠', '洗混'];
+const DISCARD_CARDS = ['跳过（逃脱）', '恩惠（调情）', '洗混（搅乱）', '预见未来（幻觉）'];
+
+const LEGACY_OVERLAYS: OverlayKind[] = ['play', 'combo', 'comboError', 'log'];
 
 function classify(cards: HandCard[]): Classification {
-  if (cards.length === 0) return { kind: 'error', message: '请先选择要打出的卡牌' };
+  if (cards.length === 0) return { error: '请先选择要打出的卡牌' };
   if (cards.length === 1) {
     const card = cards[0]!;
-    if (card.kind === 'cat') {
-      return { kind: 'error', message: '特殊猫咪不能单独打出，请组合使用。' };
-    }
+    if (card.kind === 'cat') return { error: '特殊猫咪不能单独打出，请组合使用' };
     if (card.kind === 'bomb' || card.kind === 'defuse' || card.kind === 'nope') {
-      return { kind: 'error', message: '该卡牌不能主动打出。' };
+      return { error: '该卡牌不能主动打出' };
     }
-    return { kind: 'single', card };
+    return { kind: 'single' };
   }
   if (cards.some((card) => card.kind !== 'cat')) {
-    return { kind: 'error', message: '组合只能由特殊猫咪组成。' };
+    return { error: '组合只能由特殊猫咪组成' };
   }
   if (cards.length === 2 || cards.length === 3) {
     const firstName = cards[0]!.name;
     if (cards.some((card) => card.name !== firstName)) {
-      return { kind: 'error', message: '所选卡牌不构成有效组合，需要相同名称的特殊猫咪。' };
+      return { error: '需要相同名称的特殊猫咪' };
     }
     return { kind: cards.length === 2 ? 'comboTwo' : 'comboThree' };
   }
   if (cards.length === 5) {
     if (new Set(cards.map((card) => card.name)).size !== 5) {
-      return { kind: 'error', message: '五张组合需要名称各不相同的特殊猫咪。' };
+      return { error: '五张组合需要名称各不相同' };
     }
     return { kind: 'comboFive' };
   }
-  return { kind: 'error', message: '无效的组合数量。' };
+  return { error: '无效的组合数量' };
+}
+
+function kindText(kind: PlayKind): string {
+  switch (kind) {
+    case 'single': return '单张卡牌';
+    case 'comboTwo': return '两张相同猫咪';
+    case 'comboThree': return '三张相同猫咪';
+    case 'comboFive': return '五张不同猫咪';
+    default: return '卡牌';
+  }
 }
 
 interface TableSceneProps {
@@ -78,56 +86,67 @@ export function TableScene({ table, initialOverlay, initialSelection, onUpdate }
   );
   const [dialog, setDialog] = useState<OverlayKind>(initialOverlay ?? null);
   const [note, setNote] = useState('');
-  const [errorText, setErrorText] = useState(
-    '所选卡牌不构成有效组合，请选择两张相同、三张相同或五张不同的特殊猫咪。',
-  );
   const [targetId, setTargetId] = useState(
     () => table.seats.find((seat) => seat.alive && seat.id !== 'p1')?.id ?? '',
   );
   const [named, setNamed] = useState('');
-  const [discardPick, setDiscardPick] = useState('');
-  const [placeMode, setPlaceMode] = useState<'' | 'top' | 'bottom' | 'index'>('');
-  const [placeIndex, setPlaceIndex] = useState('1');
+  const [insertValue, setInsertValue] = useState(String(table.drawPile + 1));
   const [giveUpConfirm, setGiveUpConfirm] = useState(false);
+  const [discardOpen, setDiscardOpen] = useState(initialOverlay === 'discardPile');
+  const logRef = useRef<HTMLDivElement | null>(null);
+  const logFollowRef = useRef(true);
 
+  const me = table.seats.find((seat) => seat.id === 'p1');
+  const myAlive = me?.alive ?? true;
   const current = table.seats.find((seat) => seat.id === table.currentId);
-  const isMyTurn = table.currentId === 'p1';
-  const selectedCards = table.hand.filter((card) => selected.includes(card.id));
+  const canAct = table.currentId === 'p1' && myAlive;
+  const opponents = table.seats.filter((seat) => seat.id !== 'p1');
+  const selectedCards = useMemo(
+    () => selected
+      .map((id) => table.hand.find((card) => card.id === id))
+      .filter((card): card is HandCard => Boolean(card)),
+    [selected, table.hand],
+  );
   const classification = classify(selectedCards);
   const hasDefuse = table.hand.some((card) => card.kind === 'defuse');
-  const aliveOpponents = table.seats.filter((seat) => seat.alive && seat.id !== 'p1');
+  const aliveOpponents = opponents.filter((seat) => seat.alive);
   const targetName =
     table.seats.find((seat) => seat.id === targetId)?.name ?? aliveOpponents[0]?.name ?? '模拟玩家 A';
-  const selectedLabel =
-    selectedCards.length === 0
-      ? '未选择'
-      : selectedCards.every((card) => card.name === selectedCards[0]!.name)
-        ? `${selectedCards[0]!.name} ×${selectedCards.length}`
-        : selectedCards.map((card) => card.name).join('、');
+  const selectedLabel = selectedCards.length === 0
+    ? '未选择'
+    : selectedCards.map((card) => displayName(card)).join('、');
+  const legacy = LEGACY_OVERLAYS.includes(initialOverlay ?? null);
 
-  const indexValue = Number(placeIndex);
-  const indexValid = Number.isInteger(indexValue) && indexValue >= 1 && indexValue <= table.drawPile + 1;
-  const placeReady =
-    placeMode === 'top' || placeMode === 'bottom' || (placeMode === 'index' && indexValid);
+  const insertPosition = Number(insertValue);
+  const insertValid =
+    Number.isInteger(insertPosition)
+    && insertPosition >= 1
+    && insertPosition <= table.drawPile + 1;
+
+  useEffect(() => {
+    const element = logRef.current;
+    if (!element || !logFollowRef.current) return;
+    element.scrollTop = element.scrollHeight;
+  }, [table.log.length]);
 
   const toggleCard = (cardId: string) => {
-    if (!isMyTurn) {
-      setNote('等待当前玩家行动，出牌与抽牌按钮已禁用。');
-      return;
-    }
+    if (!canAct) return;
     setSelected((prev) => {
       if (prev.includes(cardId)) return prev.filter((id) => id !== cardId);
-      if (prev.length >= 5) return prev;
+      if (prev.length >= 5) {
+        setNote('最多一次选择 5 张卡牌');
+        return prev;
+      }
       return [...prev, cardId];
     });
-    setNote('');
   };
 
-  const commitSelected = (message: string) => {
-    const ids = selected.filter((id) => table.hand.some((card) => card.id === id));
+  const commit = (message: string, patch: Partial<TableState> = {}) => {
+    const ids = new Set(selected);
     onUpdate({
-      hand: table.hand.filter((card) => !ids.includes(card.id)),
+      hand: table.hand.filter((card) => !ids.has(card.id)),
       log: [...table.log, message],
+      ...patch,
     });
     setSelected([]);
     setDialog(null);
@@ -135,102 +154,80 @@ export function TableScene({ table, initialOverlay, initialSelection, onUpdate }
   };
 
   const handlePlay = () => {
-    if (!isMyTurn) return;
-    if (selected.length === 0) {
-      setNote('请先选择要打出的卡牌。');
-      return;
-    }
-    const result = classify(selectedCards);
-    if (result.kind === 'error') {
-      setErrorText(result.message);
-      setDialog('comboError');
-      return;
-    }
-    if (result.kind === 'single') {
-      setDialog('play');
-      return;
-    }
-    setDialog('combo');
-  };
-
-  const handleSingleConfirm = () => {
-    const card = selectedCards[0];
-    if (!card) {
-      setDialog(null);
-      return;
-    }
-    if (card.name === '恩惠') {
-      setDialog('target');
-      return;
-    }
-    if (card.name === '预见未来') {
-      setDialog('foresee');
-      return;
-    }
-    if (card.name === '攻击') {
-      setDialog('counter');
-      return;
-    }
-    commitSelected(`我打出 ${displayName(card)}。`);
-  };
-
-  const handleComboConfirm = () => {
-    if (classification.kind === 'comboTwo') {
-      setDialog('target');
-      return;
-    }
-    if (classification.kind === 'comboThree') {
-      setDialog('guess');
+    if (!canAct) return;
+    if ('error' in classification) {
+      setNote(classification.error);
       return;
     }
     if (classification.kind === 'comboFive') {
+      if (table.discardCount === 0) {
+        setNote('弃牌堆为空，不能打出五张不同猫咪组合');
+        return;
+      }
       setDialog('discard');
+      return;
     }
+    if (classification.kind === 'single') {
+      const card = selectedCards[0]!;
+      if (card.name === '恩惠') {
+        setDialog('target');
+        return;
+      }
+      if (card.name === '预见未来') {
+        const ids = new Set(selected);
+        onUpdate({
+          hand: table.hand.filter((item) => !ids.has(item.id)),
+          log: [...table.log, '我使用预见未来（幻觉），查看牌堆顶部三张'],
+        });
+        setSelected([]);
+        setDialog('foresee');
+        return;
+      }
+      commit(`我打出「${displayName(card)}」`);
+      return;
+    }
+    setDialog('target');
   };
 
-  const handleTargetConfirm = () => {
-    const target = table.seats.find((seat) => seat.id === targetId && seat.alive);
+  const handleTarget = (playerId: string) => {
+    setTargetId(playerId);
+    const target = table.seats.find((seat) => seat.id === playerId);
     if (!target) return;
-    const played =
-      selectedCards.length > 1
-        ? `${selectedCards[0]!.name} ×${selectedCards.length}`
-        : selectedCards[0]
-          ? displayName(selectedCards[0])
-          : '组合';
-    commitSelected(`我打出 ${played}，目标：${target.name}。`);
+    if ('kind' in classification && classification.kind === 'comboThree') {
+      setDialog('guess');
+      return;
+    }
+    const played = selectedCards.length > 1
+      ? `${selectedCards[0]!.name} ×${selectedCards.length}`
+      : selectedCards[0]
+        ? displayName(selectedCards[0])
+        : '组合';
+    commit(`我打出 ${played}，目标：${target.name}`);
   };
 
-  const handleGuessConfirm = () => {
-    if (!named) return;
-    commitSelected(`我打出三张相同猫咪，目标：${targetName}，指定卡牌：${named}。`);
+  const handleGuess = (name: string) => {
+    setNamed(name);
+    commit(`我打出三张相同猫咪，目标：${targetName}，指定卡牌：${name}`);
   };
 
-  const handleDiscardConfirm = () => {
-    if (table.discardCount <= 0 || !discardPick) return;
-    commitSelected(`我打出五张不同猫咪，从弃牌堆选择：${discardPick}。`);
+  const handleDiscard = (name: string) => {
+    commit(`我打出五张不同猫咪，从弃牌堆选择：${name}`);
   };
 
-  const handleForeseeConfirm = () => {
-    commitSelected(
-      selectedCards.length > 0
-        ? '我使用预见未来，查看抽牌堆顶部三张，并按原顺序放回。'
-        : '演示：查看抽牌堆顶部三张，并按原顺序放回。',
-    );
+  const handleFavorGive = (name: string) => {
+    onUpdate({ log: [...table.log, `我向 ${targetName} 交出一张手牌：${name}`] });
+    setDialog(null);
   };
 
   const handleCounter = (useNope: boolean) => {
-    const attack = selectedCards.find((card) => card.name === '攻击');
     onUpdate({
-      hand: attack ? table.hand.filter((card) => card.id !== attack.id) : table.hand,
       log: [
         ...table.log,
-        attack ? '我打出攻击（高潮）。' : '演示：等待其他玩家响应休想。',
-        useNope ? '其他玩家使用休想反制。' : '其他玩家放弃响应。',
+        useNope ? '我使用休想，取消该卡牌效果' : '我放弃使用休想',
       ],
     });
-    setSelected([]);
     setDialog(null);
-    setNote(useNope ? '休想已生效，攻击被取消。' : '无人使用休想，攻击生效。');
+    setNote(useNope ? '休想已生效，卡牌效果被取消。' : '已放弃响应，卡牌效果生效。');
   };
 
   const handleUseDefuse = () => {
@@ -238,38 +235,37 @@ export function TableScene({ table, initialOverlay, initialSelection, onUpdate }
     if (!defuse) return;
     onUpdate({
       hand: table.hand.filter((card) => card.id !== defuse.id),
-      log: [...table.log, '我使用拆除（消火），避免淘汰。'],
+      log: [...table.log, '我使用拆除（消火），避免淘汰'],
     });
-    setGiveUpConfirm(false);
     setDialog('bombPlace');
   };
 
   const handleGiveUp = () => {
-    const next = table.seats.find((seat) => seat.alive && seat.id !== 'p1');
     onUpdate({
-      seats: table.seats.map((seat) => (seat.id === 'p1' ? { ...seat, alive: false } : seat)),
-      currentId: next?.id ?? table.currentId,
-      log: [...table.log, '我放弃使用拆除，被淘汰（演示）。'],
+      seats: table.seats.map((seat) => (seat.id === 'p1' ? { ...seat, alive: false, handCount: 0 } : seat)),
+      hand: [],
+      log: [...table.log, '我放弃使用拆除，被淘汰，全部手牌移出本局'],
     });
     setGiveUpConfirm(false);
-    setDialog(null);
-    setNote('已放弃拆除，演示中我已被淘汰。');
+    setDialog('eliminated');
+    setNote('');
   };
 
-  const handlePlaceConfirm = () => {
-    if (!placeReady) return;
-    const position =
-      placeMode === 'top' ? '牌堆顶部' : placeMode === 'bottom' ? '牌堆底部' : `第 ${placeIndex} 张`;
-    onUpdate({ log: [...table.log, `炸弹猫已放回：${position}（对其他玩家保密）。`] });
+  const handleBombInsert = (position: number) => {
+    const label = position <= 0
+      ? '牌堆顶部'
+      : position >= table.drawPile
+        ? '牌堆底部'
+        : `第 ${position + 1} 张`;
+    onUpdate({ log: [...table.log, `炸弹猫已秘密放回：${label}`] });
     setDialog(null);
-    setNote(`炸弹猫已放回：${position}。`);
+    setNote(`炸弹猫已放回：${label}。`);
   };
 
   const handleDraw = () => {
-    if (!isMyTurn) return;
+    if (!canAct) return;
     if (table.drawPile <= 0) {
-      setNote('牌堆异常，禁止抽牌并记录问题。');
-      onUpdate({ log: [...table.log, '抽牌失败：抽牌堆为空，已记录问题。'] });
+      setNote('抽牌堆为空，无法抽牌。');
       return;
     }
     const alive = table.seats.filter((seat) => seat.alive);
@@ -277,84 +273,142 @@ export function TableScene({ table, initialOverlay, initialSelection, onUpdate }
     const next = alive[(index + 1) % alive.length];
     onUpdate({
       drawPile: table.drawPile - 1,
-      discardCount: table.discardCount + 1,
       currentId: next?.id ?? table.currentId,
       log: [
         ...table.log,
-        '我抽了一张牌，回合结束。',
+        '我抽了一张牌，回合结束',
         next ? `当前玩家：${next.name}` : '当前玩家：我',
       ],
     });
+    setSelected([]);
     setNote(next ? `已抽牌，等待 ${next.name} 行动。` : '已抽牌，回合结束。');
   };
 
-  const hints: string[] = [];
-  if (!isMyTurn) hints.push('等待当前玩家行动，出牌与抽牌按钮已禁用。');
-  if (table.drawPile <= 0) hints.push('牌堆异常：抽牌堆为空，已禁止抽牌并记录问题。');
-  if (note) hints.push(note);
-
   return (
     <div className="wf-screen table-screen">
-      <header className="tbl-head">
-        <span className="tbl-round">第 {table.round} 轮</span>
-        <span className="tbl-current">当前：{current?.name ?? '—'}</span>
-        <span className="wf-muted">抽牌堆 {table.drawPile}</span>
-        <span className="wf-muted">弃牌堆 {table.discardCount}</span>
-        <button type="button" className="wf-btn small" onClick={() => setDialog('log')}>
-          日志
-        </button>
+      {legacy ? (
+        <div className="g-legacy-banner">
+          线框保留场景：当前实现无此浮层或入口，以下内容仅作历史线框记录。
+        </div>
+      ) : null}
+
+      <header className="g-head">
+        <div className="g-head-info">
+          <p className="wf-subtitle">房间 {table.roomId} · 第 {table.round} 回合</p>
+          <h2 className="g-turn">
+            当前：{current?.name ?? '—'}
+            {canAct ? <span className="wf-tag wf-tag--mine">你的回合</span> : null}
+            {table.remainingTurns > 1 ? (
+              <span className="wf-tag">剩余 {table.remainingTurns} 回合</span>
+            ) : null}
+          </h2>
+          {!myAlive ? <p className="wf-help wf-help--warn">你已被淘汰，正在观战。</p> : null}
+        </div>
+        <div className="g-piles">
+          <div className="g-pile">
+            <span className="g-pile-label">抽牌堆</span>
+            <strong className="g-pile-value">{table.drawPile}</strong>
+          </div>
+          <div className="g-pile">
+            <span className="g-pile-label">弃牌堆</span>
+            <strong className="g-pile-value">{table.discardCount}</strong>
+          </div>
+        </div>
       </header>
 
-      <div className="tbl-body">
-        <section className="tbl-opponents">
-          {table.seats
-            .filter((seat) => seat.id !== 'p1')
-            .map((seat) => (
-              <div
-                key={seat.id}
-                className={`opp${seat.alive ? '' : ' opp--out'}${
-                  seat.id === table.currentId ? ' opp--current' : ''
-                }`}
-              >
-                <div className="opp-name">{seat.name}</div>
-                <div>手牌 {seat.alive ? seat.handCount : '—'}</div>
-                <div>{seat.alive ? '存活' : '已淘汰'}</div>
-                {seat.id === table.currentId ? <div className="opp-tag">当前回合</div> : null}
+      <section className="g-opponents">
+        {opponents.map((seat) => (
+          <div
+            key={seat.id}
+            className={[
+              'g-opponent',
+              seat.alive ? '' : 'is-out',
+              seat.id === table.currentId ? 'is-current' : '',
+            ].filter(Boolean).join(' ')}
+          >
+            <div className="g-opp-top">
+              <strong>{seat.name}</strong>
+              <span>{seat.alive ? '存活' : '已淘汰'}</span>
+            </div>
+            <div className="g-opp-hand">
+              {Array.from({ length: Math.min(seat.handCount, 6) }).map((_, index) => (
+                <span key={index} className="g-mini-card" />
+              ))}
+              {seat.handCount > 6 ? <span className="g-opp-more">+{seat.handCount - 6}</span> : null}
+              {seat.handCount === 0 ? <span className="g-opp-empty">无手牌</span> : null}
+            </div>
+            <div className="g-opp-foot">
+              <span>手牌 {seat.handCount}</span>
+              {seat.id === table.currentId ? <span className="g-opp-turn">行动中</span> : null}
+            </div>
+          </div>
+        ))}
+      </section>
+
+      <div className="g-main">
+        <section className="g-board wf-panel">
+          <div className="g-piles-row">
+            <div className="g-draw">
+              <strong>{table.drawPile}</strong>
+              <span>抽牌堆</span>
+            </div>
+            <div className="g-discard">
+              <span className="wf-label">弃牌堆顶</span>
+              <div className="g-discard-card">
+                {table.discardCount > 0 ? table.discardTop : '暂无弃牌'}
               </div>
+              <details
+                className="g-discard-details"
+                open={discardOpen}
+                onToggle={(event) => setDiscardOpen(event.currentTarget.open)}
+              >
+                <summary>查看弃牌堆（{table.discardCount}）</summary>
+                <ul>
+                  {table.discardCount === 0 ? <li>暂无弃牌</li> : null}
+                  {DISCARD_CARDS.slice(0, Math.min(DISCARD_CARDS.length, table.discardCount)).map((name) => (
+                    <li key={name}>{name}</li>
+                  ))}
+                </ul>
+              </details>
+            </div>
+          </div>
+
+          {table.pendingLabel ? (
+            <div className="g-pending">
+              <strong>待处理：{table.pendingLabel}</strong>
+              <span>{table.pendingStatus}</span>
+              {table.counterDepth ? <span>反制层数 {table.counterDepth}</span> : null}
+            </div>
+          ) : (
+            <p className="wf-help">
+              {canAct ? '选择手牌出牌，或直接抽牌结束本回合。' : `等待 ${current?.name ?? '当前玩家'} 行动。`}
+            </p>
+          )}
+
+          <div
+            className="g-log"
+            ref={logRef}
+            onScroll={(event) => {
+              const element = event.currentTarget;
+              logFollowRef.current =
+                element.scrollHeight - element.scrollTop - element.clientHeight < 24;
+            }}
+          >
+            {table.log.map((line, index) => (
+              <p className="g-event" key={`${line}-${index}`}>
+                <span>{String(index + 1).padStart(2, '0')}</span>
+                {line}
+              </p>
             ))}
+          </div>
         </section>
 
-        <div className="tbl-main">
-          <section className="tbl-center">
-            <button type="button" className="pile pile--button" onClick={() => setDialog('discardPile')}>
-              <span className="wf-label">弃牌堆顶</span>
-              <strong>{table.discardCount > 0 ? table.discardTop : '（空）'}</strong>
-              <span className="wf-muted">共 {table.discardCount} 张</span>
-            </button>
-            <div className="pile">
-              <span className="wf-label">抽牌堆</span>
-              <strong>{table.drawPile} 张</strong>
-              <span className="wf-muted">仅显示剩余张数</span>
-            </div>
-            {table.remainingTurns > 1 ? (
-              <div className="wf-hint">剩余回合数：{table.remainingTurns}</div>
-            ) : null}
-          </section>
-
-          <aside className="tbl-log-side">
-            <div className="wf-panel-title">对局日志</div>
-            <ul className="log-list">
-              {table.log.slice(-6).map((line, index) => (
-                <li key={`${line}-${index}`}>{line}</li>
-              ))}
-            </ul>
-          </aside>
-        </div>
-
-        <section className="tbl-hand">
-          <div className="tbl-hand-head">
-            <span>我的手牌（{table.hand.length}）</span>
-            <span className="wf-muted">已选：{selectedLabel}</span>
+        <section className="g-hand-zone wf-panel">
+          <div className="g-hand-head">
+            <h3>我的手牌（{table.hand.length}）</h3>
+            <span className={canAct ? 'g-status g-status--ok' : 'g-status'}>
+              {canAct ? '可行动' : '等待中'}
+            </span>
           </div>
           <div className="hand">
             {table.hand.map((card) => (
@@ -363,36 +417,322 @@ export function TableScene({ table, initialOverlay, initialSelection, onUpdate }
                 type="button"
                 className={`hand-card${selected.includes(card.id) ? ' hand-card--selected' : ''}`}
                 onClick={() => toggleCard(card.id)}
-                disabled={!isMyTurn}
+                disabled={!canAct}
               >
                 <span className="hand-card-kind">{KIND_LABEL[card.kind]}</span>
                 <span className="hand-card-name">{card.name}</span>
                 <span className="hand-card-effect">{card.effect}</span>
               </button>
             ))}
-            {table.hand.length === 0 ? <div className="wf-empty">手牌已空</div> : null}
+            {table.hand.length === 0 ? <p className="g-empty-hand">暂无手牌，可直接抽牌。</p> : null}
           </div>
+
+          {selectedCards.length > 0 ? (
+            <div className="g-selection">
+              <span>已选 {selectedCards.length} 张：{selectedLabel}</span>
+              <span className={'error' in classification ? 'wf-help wf-help--warn' : 'wf-help wf-help--ok'}>
+                {'error' in classification ? classification.error : `可打出：${kindText(classification.kind)}`}
+              </span>
+            </div>
+          ) : null}
+
+          {note ? <p className="wf-hint wf-hint--warn">{note}</p> : null}
+
+          <div className="g-hand-actions">
+            <button
+              type="button"
+              className="wf-btn primary"
+              onClick={handlePlay}
+              disabled={!canAct || selectedCards.length === 0}
+            >
+              出牌
+            </button>
+            <button
+              type="button"
+              className="wf-btn accent"
+              onClick={handleDraw}
+              disabled={!canAct || table.drawPile === 0}
+            >
+              抽牌并结束回合
+            </button>
+            <button
+              type="button"
+              className="wf-btn ghost"
+              onClick={() => {
+                setSelected([]);
+                setNote('');
+              }}
+              disabled={selectedCards.length === 0}
+            >
+              清空选择
+            </button>
+          </div>
+          {table.drawPile === 0 ? <p className="wf-hint wf-hint--warn">抽牌堆为空，无法抽牌。</p> : null}
         </section>
       </div>
 
-      {hints.length > 0 ? (
-        <div className="tbl-hints">
-          {hints.map((text) => (
-            <div className="wf-hint" key={text}>
-              {text}
-            </div>
-          ))}
-        </div>
+      {dialog === 'target' ? (
+        <Modal
+          title="选择目标玩家"
+          onClose={() => setDialog(null)}
+          footer={
+            <button type="button" className="wf-btn" onClick={() => setDialog(null)}>
+              取消
+            </button>
+          }
+        >
+          <p className="wf-dialog-desc">
+            {'kind' in classification && classification.kind === 'single'
+              ? '恩惠：目标玩家需自行选择一张手牌交给你。'
+              : 'kind' in classification && classification.kind === 'comboTwo'
+                ? '两张相同猫咪：从目标手牌中随机抽取一张。'
+                : '三张相同猫咪：先选择目标，再指定卡牌名称。'}
+          </p>
+          <div className="target-list">
+            {aliveOpponents.map((seat) => (
+              <button
+                key={seat.id}
+                type="button"
+                className={`target-row${targetId === seat.id ? ' active' : ''}`}
+                disabled={seat.handCount === 0}
+                onClick={() => handleTarget(seat.id)}
+              >
+                <strong>{seat.name}</strong>
+                <span>{seat.handCount === 0 ? '无手牌，不可选择' : `手牌 ${seat.handCount}`}</span>
+              </button>
+            ))}
+          </div>
+        </Modal>
       ) : null}
 
-      <footer className="tbl-actions">
-        <button type="button" className="wf-btn primary" onClick={handlePlay} disabled={!isMyTurn}>
-          出牌
-        </button>
-        <button type="button" className="wf-btn" onClick={handleDraw} disabled={!isMyTurn}>
-          抽牌并结束回合
-        </button>
-      </footer>
+      {dialog === 'guess' ? (
+        <Modal
+          title="指定卡牌名称"
+          width={420}
+          onClose={() => setDialog(null)}
+          footer={
+            <button type="button" className="wf-btn" onClick={() => setDialog(null)}>
+              取消
+            </button>
+          }
+        >
+          <p className="wf-dialog-desc">目标：{targetName}</p>
+          <p className="wf-help">手牌为空的玩家不可作为恩惠或猫咪组合的目标；炸弹猫不可作为指定名称。</p>
+          <div className="name-grid">
+            {GUESS_NAMES.map((name) => (
+              <button
+                key={name}
+                type="button"
+                className="wf-btn small"
+                disabled={name === '炸弹猫'}
+                onClick={() => handleGuess(name)}
+              >
+                {name}
+              </button>
+            ))}
+          </div>
+        </Modal>
+      ) : null}
+
+      {dialog === 'discard' ? (
+        <Modal
+          title="从弃牌堆选择一张牌"
+          onClose={() => setDialog(null)}
+          footer={
+            <button type="button" className="wf-btn" onClick={() => setDialog(null)}>
+              取消
+            </button>
+          }
+        >
+          {table.discardCount === 0 ? (
+            <p className="wf-hint wf-hint--warn">弃牌堆为空，无法执行该组合。</p>
+          ) : (
+            <div className="discard-picker">
+              {DISCARD_CARDS.slice(0, Math.min(DISCARD_CARDS.length, table.discardCount)).map((name) => (
+                <button
+                  key={name}
+                  type="button"
+                  className="wf-btn small"
+                  onClick={() => handleDiscard(name)}
+                >
+                  {name}
+                </button>
+              ))}
+            </div>
+          )}
+        </Modal>
+      ) : null}
+
+      {dialog === 'counter' ? (
+        <Modal
+          title="是否使用休想"
+          onClose={() => setDialog(null)}
+          footer={
+            <>
+              <button
+                type="button"
+                className="wf-btn primary"
+                disabled
+                title="手牌中没有休想"
+              >
+                使用休想
+              </button>
+              <button type="button" className="wf-btn" onClick={() => handleCounter(false)}>
+                放弃
+              </button>
+            </>
+          }
+        >
+          <p className="wf-dialog-desc">
+            模拟玩家 A 打出 攻击（高潮），当前反制层数 1。休想可以取消该效果，也可以被另一张休想反制。
+          </p>
+          <p className="wf-hint wf-hint--warn">你手牌中没有休想，只能放弃。</p>
+        </Modal>
+      ) : null}
+
+      {dialog === 'favorGive' ? (
+        <Modal
+          title="选择交给对方的手牌"
+          onClose={() => setDialog(null)}
+        >
+          <p className="wf-dialog-desc">模拟玩家 A 对你使用恩惠，请选择一张手牌交出。</p>
+          <div className="favor-picker">
+            {table.hand.map((card) => (
+              <button
+                key={card.id}
+                type="button"
+                className="hand-card"
+                onClick={() => handleFavorGive(displayName(card))}
+              >
+                <span className="hand-card-kind">{KIND_LABEL[card.kind]}</span>
+                <span className="hand-card-name">{card.name}</span>
+              </button>
+            ))}
+          </div>
+          {table.hand.length === 0 ? <p className="wf-hint wf-hint--warn">你没有手牌，无法交出。</p> : null}
+        </Modal>
+      ) : null}
+
+      {dialog === 'bomb' ? (
+        <Modal
+          title="你抽到了炸弹猫"
+          onClose={() => setDialog(null)}
+          footer={
+            giveUpConfirm ? (
+              <>
+                <button type="button" className="wf-btn primary" onClick={handleGiveUp}>
+                  确认淘汰
+                </button>
+                <button type="button" className="wf-btn" onClick={() => setGiveUpConfirm(false)}>
+                  取消
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  className="wf-btn primary"
+                  onClick={handleUseDefuse}
+                  disabled={!hasDefuse}
+                >
+                  使用拆除
+                </button>
+                <button type="button" className="wf-btn" onClick={() => setGiveUpConfirm(true)}>
+                  放弃并淘汰
+                </button>
+              </>
+            )
+          }
+        >
+          <p className="wf-dialog-desc">
+            使用一张拆除（消火）可避免淘汰，并秘密把炸弹猫放回抽牌堆。拆除处理不受休想影响。
+          </p>
+          <p className="wf-hint">
+            {hasDefuse ? `手牌中有 ${table.hand.filter((card) => card.kind === 'defuse').length} 张拆除。` : '手牌中没有拆除，将被淘汰。'}
+          </p>
+          {giveUpConfirm ? (
+            <p className="wf-hint wf-hint--warn">
+              确认放弃拆除将立即被淘汰，全部手牌与炸弹移出本局，操作不可撤销。
+            </p>
+          ) : null}
+        </Modal>
+      ) : null}
+
+      {dialog === 'bombPlace' ? (
+        <Modal
+          title="放回炸弹猫"
+          onClose={() => setDialog(null)}
+          footer={
+            <button
+              type="button"
+              className="wf-btn primary"
+              onClick={() => handleBombInsert(insertPosition - 1)}
+              disabled={!insertValid}
+            >
+              确认放回
+            </button>
+          }
+        >
+          <p className="wf-dialog-desc">
+            选择炸弹猫在抽牌堆中的位置，该位置对其他玩家保密。当前抽牌堆 {table.drawPile} 张。
+          </p>
+          <div className="place-options">
+            <button type="button" className="wf-btn" onClick={() => handleBombInsert(0)}>
+              牌堆顶部
+            </button>
+            <button type="button" className="wf-btn" onClick={() => handleBombInsert(table.drawPile)}>
+              牌堆底部
+            </button>
+          </div>
+          <label className="wf-field">
+            <span className="wf-label">
+              指定位置：第 1 张为顶部，第 {table.drawPile + 1} 张为底部
+            </span>
+            <input
+              className="wf-input"
+              value={insertValue}
+              inputMode="numeric"
+              onChange={(event) => setInsertValue(event.target.value)}
+            />
+          </label>
+        </Modal>
+      ) : null}
+
+      {dialog === 'eliminated' ? (
+        <Modal
+          title="你已被淘汰"
+          onClose={() => setDialog(null)}
+          footer={
+            <button type="button" className="wf-btn primary" onClick={() => setDialog(null)}>
+              继续观战
+            </button>
+          }
+        >
+          <p className="wf-dialog-desc">
+            你抽到炸弹猫且没有打出拆除，已退出本局。你的手牌已移出，无法继续出牌或抽牌。
+          </p>
+          <p className="wf-hint">对局仍在进行，你可以继续观战直到结算。</p>
+        </Modal>
+      ) : null}
+
+      {dialog === 'foresee' ? (
+        <Modal
+          title="预见未来：抽牌堆顶部三张"
+          onClose={() => setDialog(null)}
+          footer={
+            <button type="button" className="wf-btn primary" onClick={() => setDialog(null)}>
+              知道了
+            </button>
+          }
+        >
+          <p className="wf-dialog-desc">只有你可以看到这三张牌，确认后按原顺序放回牌堆顶部。</p>
+          <ol className="future-list">
+            <li>炸弹猫</li>
+            <li>跳过（逃脱）</li>
+            <li>薯条猫咪</li>
+          </ol>
+        </Modal>
+      ) : null}
 
       {dialog === 'play' && selectedCards[0] ? (
         <Modal
@@ -403,14 +743,8 @@ export function TableScene({ table, initialOverlay, initialSelection, onUpdate }
               <button type="button" className="wf-btn" onClick={() => setDialog(null)}>
                 取消
               </button>
-              <button type="button" className="wf-btn primary" onClick={handleSingleConfirm}>
-                {selectedCards[0].name === '恩惠'
-                  ? '选择目标'
-                  : selectedCards[0].name === '预见未来'
-                    ? '查看牌堆顶'
-                    : selectedCards[0].name === '攻击'
-                      ? '打出并等待响应'
-                      : '确定打出'}
+              <button type="button" className="wf-btn primary" onClick={() => setDialog(null)}>
+                确定打出
               </button>
             </>
           }
@@ -432,7 +766,7 @@ export function TableScene({ table, initialOverlay, initialSelection, onUpdate }
               <button type="button" className="wf-btn" onClick={() => setDialog(null)}>
                 重新选择
               </button>
-              <button type="button" className="wf-btn primary" onClick={handleComboConfirm}>
+              <button type="button" className="wf-btn primary" onClick={() => setDialog(null)}>
                 作为组合打出
               </button>
             </>
@@ -443,13 +777,7 @@ export function TableScene({ table, initialOverlay, initialSelection, onUpdate }
           </p>
           <p className="wf-dialog-desc">
             可识别组合：
-            {classification.kind === 'comboTwo'
-              ? '两张相同猫咪'
-              : classification.kind === 'comboThree'
-                ? '三张相同猫咪'
-                : classification.kind === 'comboFive'
-                  ? '五张不同猫咪'
-                  : '未识别'}
+            {selectedCards.length === 2 ? '两张相同猫咪' : selectedCards.length === 3 ? '三张相同猫咪' : '五张不同猫咪'}
           </p>
         </Modal>
       ) : null}
@@ -464,274 +792,10 @@ export function TableScene({ table, initialOverlay, initialSelection, onUpdate }
             </button>
           }
         >
-          <p className="wf-dialog-desc">{errorText}</p>
+          <p className="wf-dialog-desc">
+            所选卡牌不构成有效组合，请选择两张相同、三张相同或五张不同的特殊猫咪。
+          </p>
           <p className="wf-help">有效组合：两张相同、三张相同或五张不同的特殊猫咪。</p>
-        </Modal>
-      ) : null}
-
-      {dialog === 'counter' ? (
-        <Modal
-          title="等待其他玩家响应休想"
-          onClose={() => setDialog(null)}
-          footer={
-            <>
-              <button type="button" className="wf-btn" onClick={() => handleCounter(true)}>
-                使用休想
-              </button>
-              <button type="button" className="wf-btn primary" onClick={() => handleCounter(false)}>
-                放弃
-              </button>
-            </>
-          }
-        >
-          <p className="wf-dialog-desc">打出的卡牌：攻击（高潮）</p>
-          <p className="wf-dialog-desc">反制层数：1</p>
-          <p className="wf-help">等待其他玩家决定是否使用休想。</p>
-        </Modal>
-      ) : null}
-
-      {dialog === 'target' ? (
-        <Modal
-          title="选择目标"
-          onClose={() => setDialog(null)}
-          footer={
-            <>
-              <button type="button" className="wf-btn" onClick={() => setDialog(null)}>
-                取消
-              </button>
-              <button
-                type="button"
-                className="wf-btn primary"
-                onClick={handleTargetConfirm}
-                disabled={!table.seats.some((seat) => seat.id === targetId && seat.alive)}
-              >
-                确认
-              </button>
-            </>
-          }
-        >
-          <p className="wf-dialog-desc">恩惠：目标玩家需交出一张手牌</p>
-          <div className="target-list">
-            {table.seats
-              .filter((seat) => seat.id !== 'p1')
-              .map((seat) => (
-                <button
-                  key={seat.id}
-                  type="button"
-                  className={`target-row${targetId === seat.id ? ' active' : ''}`}
-                  disabled={!seat.alive}
-                  onClick={() => setTargetId(seat.id)}
-                >
-                  <span>{seat.name}</span>
-                  <span>{seat.alive ? `手牌 ${seat.handCount}` : '已淘汰'}</span>
-                </button>
-              ))}
-          </div>
-        </Modal>
-      ) : null}
-
-      {dialog === 'guess' ? (
-        <Modal
-          title="指定卡牌名称"
-          onClose={() => setDialog(null)}
-          width={420}
-          footer={
-            <>
-              <button type="button" className="wf-btn" onClick={() => setDialog(null)}>
-                取消
-              </button>
-              <button
-                type="button"
-                className="wf-btn primary"
-                onClick={handleGuessConfirm}
-                disabled={!named}
-              >
-                确认
-              </button>
-            </>
-          }
-        >
-          <p className="wf-dialog-desc">目标：{targetName}</p>
-          <div className="guess-grid">
-            {GUESS_NAMES.map((name) => (
-              <button
-                key={name}
-                type="button"
-                className={`wf-chip${named === name ? ' active' : ''}`}
-                onClick={() => setNamed(name)}
-              >
-                {name}
-              </button>
-            ))}
-          </div>
-        </Modal>
-      ) : null}
-
-      {dialog === 'discard' ? (
-        <Modal
-          title="从弃牌堆选择一张加入手牌"
-          onClose={() => setDialog(null)}
-          footer={
-            <>
-              <button type="button" className="wf-btn" onClick={() => setDialog(null)}>
-                取消
-              </button>
-              <button
-                type="button"
-                className="wf-btn primary"
-                onClick={handleDiscardConfirm}
-                disabled={table.discardCount <= 0 || !discardPick}
-              >
-                确认
-              </button>
-            </>
-          }
-        >
-          {table.discardCount <= 0 ? (
-            <div className="wf-empty">弃牌堆为空，无法选择弃牌。</div>
-          ) : (
-            <div className="discard-grid">
-              {DISCARD_CARDS.map((name) => (
-                <button
-                  key={name}
-                  type="button"
-                  className={`hand-card${discardPick === name ? ' hand-card--selected' : ''}`}
-                  onClick={() => setDiscardPick(name)}
-                >
-                  <span className="hand-card-kind">弃牌</span>
-                  <span className="hand-card-name">{name}</span>
-                </button>
-              ))}
-            </div>
-          )}
-        </Modal>
-      ) : null}
-
-      {dialog === 'foresee' ? (
-        <Modal
-          title="预见未来"
-          onClose={() => setDialog(null)}
-          footer={
-            <button type="button" className="wf-btn primary" onClick={handleForeseeConfirm}>
-              知道了
-            </button>
-          }
-        >
-          <p className="wf-dialog-desc">抽牌堆顶部三张（仅你可见）：</p>
-          <ol className="foresee-list">
-            <li>炸弹猫</li>
-            <li>跳过（逃脱）</li>
-            <li>薯条猫咪</li>
-          </ol>
-          <p className="wf-help">按原顺序放回牌堆顶部。</p>
-        </Modal>
-      ) : null}
-
-      {dialog === 'bomb' ? (
-        <Modal
-          title="你抽到了炸弹猫"
-          onClose={() => setDialog(null)}
-          footer={
-            giveUpConfirm ? (
-              <>
-                <button
-                  type="button"
-                  className="wf-btn"
-                  onClick={() => setGiveUpConfirm(false)}
-                >
-                  返回
-                </button>
-                <button type="button" className="wf-btn primary" onClick={handleGiveUp}>
-                  确认淘汰
-                </button>
-              </>
-            ) : (
-              <>
-                <button
-                  type="button"
-                  className="wf-btn"
-                  onClick={() => setGiveUpConfirm(true)}
-                >
-                  放弃并淘汰
-                </button>
-                <button
-                  type="button"
-                  className="wf-btn primary"
-                  onClick={handleUseDefuse}
-                  disabled={!hasDefuse}
-                >
-                  使用拆除
-                </button>
-              </>
-            )
-          }
-        >
-          <p className="wf-dialog-desc">使用一张拆除（消火）可避免淘汰。</p>
-          <p className="wf-help">拆除处理不可被休想取消。</p>
-          {giveUpConfirm ? (
-            <div className="wf-hint">确认放弃并淘汰？淘汰后将移出本局。</div>
-          ) : null}
-          {!hasDefuse ? (
-            <div className="wf-hint">当前手牌中没有拆除卡，只能确认淘汰，并展示即将移出本局的提示。</div>
-          ) : null}
-        </Modal>
-      ) : null}
-
-      {dialog === 'bombPlace' ? (
-        <Modal
-          title="炸弹猫放回位置"
-          onClose={() => setDialog(null)}
-          footer={
-            <button
-              type="button"
-              className="wf-btn primary"
-              onClick={handlePlaceConfirm}
-              disabled={!placeReady}
-            >
-              确认放回
-            </button>
-          }
-        >
-          <p className="wf-dialog-desc">炸弹猫放回位置（对其他玩家保密）</p>
-          <p className="wf-dialog-desc">抽牌堆当前 {table.drawPile} 张</p>
-          <div className="place-options">
-            <button
-              type="button"
-              className={`wf-chip${placeMode === 'top' ? ' active' : ''}`}
-              onClick={() => setPlaceMode('top')}
-            >
-              牌堆顶部
-            </button>
-            <button
-              type="button"
-              className={`wf-chip${placeMode === 'bottom' ? ' active' : ''}`}
-              onClick={() => setPlaceMode('bottom')}
-            >
-              牌堆底部
-            </button>
-            <div className={`place-index${placeMode === 'index' ? ' active' : ''}`}>
-              <button
-                type="button"
-                className="wf-chip"
-                onClick={() => setPlaceMode('index')}
-              >
-                指定位置
-              </button>
-              <span>第</span>
-              <input
-                className="wf-input place-input"
-                type="number"
-                min={1}
-                max={table.drawPile + 1}
-                value={placeIndex}
-                onChange={(event) => {
-                  setPlaceIndex(event.target.value);
-                  setPlaceMode('index');
-                }}
-              />
-              <span>张（1-{table.drawPile + 1}）</span>
-            </div>
-          </div>
         </Modal>
       ) : null}
 
@@ -751,30 +815,6 @@ export function TableScene({ table, initialOverlay, initialSelection, onUpdate }
               <li key={`${line}-${index}`}>{line}</li>
             ))}
           </ul>
-        </Modal>
-      ) : null}
-
-      {dialog === 'discardPile' ? (
-        <Modal
-          title="弃牌堆"
-          onClose={() => setDialog(null)}
-          footer={
-            <button type="button" className="wf-btn primary" onClick={() => setDialog(null)}>
-              关闭
-            </button>
-          }
-        >
-          {table.discardCount <= 0 ? (
-            <div className="wf-empty">弃牌堆为空。</div>
-          ) : (
-            <ul className="log-list">
-              {['攻击（高潮）', '恩惠（调情）', '跳过（逃脱）', '洗混']
-                .slice(0, Math.min(4, table.discardCount))
-                .map((name) => (
-                  <li key={name}>{name}</li>
-                ))}
-            </ul>
-          )}
         </Modal>
       ) : null}
     </div>

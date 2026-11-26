@@ -2,23 +2,25 @@ export type PlayerCount = 2 | 3 | 4 | 5;
 
 export type DeviceKind = 'phone' | 'desktop';
 
-export type ScreenId = 'home' | 'lobby' | 'table' | 'result' | 'edge';
+export type ScreenId = 'home' | 'lobby' | 'table' | 'result' | 'demo' | 'edge';
 
 export type CardKind = 'action' | 'cat' | 'defuse' | 'bomb' | 'nope';
 
 export type OverlayKind =
-  | 'play'
-  | 'combo'
-  | 'comboError'
-  | 'counter'
   | 'target'
   | 'guess'
   | 'discard'
+  | 'counter'
+  | 'favorGive'
   | 'foresee'
   | 'bomb'
   | 'bombPlace'
-  | 'log'
+  | 'eliminated'
   | 'discardPile'
+  | 'play'
+  | 'combo'
+  | 'comboError'
+  | 'log'
   | null;
 
 export interface HandCard {
@@ -42,9 +44,11 @@ export interface Seat {
 export interface Setup {
   target: PlayerCount;
   seed: string;
+  nickname: string;
 }
 
 export interface TableState {
+  roomId: string;
   round: number;
   currentId: string;
   drawPile: number;
@@ -54,13 +58,36 @@ export interface TableState {
   seats: Seat[];
   hand: HandCard[];
   log: string[];
+  pendingLabel?: string;
+  pendingStatus?: string;
+  counterDepth?: number;
+}
+
+export interface ResultPlayer {
+  id: string;
+  name: string;
+  isBot: boolean;
+  alive: boolean;
+  winner: boolean;
 }
 
 export interface ResultData {
+  roomId: string;
+  turnNumber: number;
   winner: string;
-  rounds: number;
   survivors: number;
+  participants: number;
+  players: ResultPlayer[];
   keyEvents: string[];
+  log: string[];
+}
+
+export interface DemoOutcome {
+  finished: boolean;
+  winner: string;
+  steps: number;
+  participants: number;
+  survivors: number;
   log: string[];
 }
 
@@ -74,4 +101,5 @@ export interface PageMeta {
   device?: DeviceKind;
   overlay?: Exclude<OverlayKind, null>;
   initialSelection?: string[];
+  legacy?: boolean;
 }

@@ -8,6 +8,7 @@ import {
 } from './game';
 import { GROUPS, PAGES, findPage } from './pages';
 import type { DeviceKind, PageMeta, ScreenId, Seat, Setup, TableState } from './types';
+import { DemoScene } from './scenes/DemoScene';
 import { EdgeScene, type EdgeCaseKey } from './scenes/EdgeScene';
 import { HomeScene } from './scenes/HomeScene';
 import { LobbyScene } from './scenes/LobbyScene';
@@ -15,6 +16,62 @@ import { ResultScene } from './scenes/ResultScene';
 import { TableScene } from './scenes/TableScene';
 
 const ZOOMS = [0.5, 0.75, 1] as const;
+
+function tableForPage(target: PageMeta): TableState {
+  const base = makeDemoTable();
+  if (target.id === 'table-eliminated') {
+    return {
+      ...base,
+      seats: base.seats.map((seat) => (
+        seat.id === 'p1' ? { ...seat, alive: false, handCount: 0 } : seat
+      )),
+      hand: [],
+      currentId: 'p2',
+      log: [
+        ...base.log,
+        '我抽到炸弹猫，未持有拆除',
+        '我被淘汰，全部手牌移出本局，可继续观战',
+      ],
+    };
+  }
+  if (target.id === 'play-counter') {
+    return {
+      ...base,
+      pendingLabel: '攻击（高潮）',
+      pendingStatus: '等待 我 决定是否使用休想',
+      counterDepth: 1,
+    };
+  }
+  if (target.id === 'play-favor') {
+    return {
+      ...base,
+      pendingLabel: '恩惠（调情）',
+      pendingStatus: '等待 我 选择交出的手牌',
+    };
+  }
+  if (target.id === 'bomb') {
+    return {
+      ...base,
+      pendingLabel: '炸弹猫',
+      pendingStatus: '等待 我 决定是否使用拆除',
+    };
+  }
+  if (target.id === 'bomb-place') {
+    return {
+      ...base,
+      pendingLabel: '炸弹猫',
+      pendingStatus: '等待 我 秘密选择放回位置',
+    };
+  }
+  if (target.id === 'effect-foresee') {
+    return {
+      ...base,
+      pendingLabel: '预见未来（幻觉）',
+      pendingStatus: '等待 我 查看结果',
+    };
+  }
+  return base;
+}
 
 export default function Playground() {
   const [setup, setSetup] = useState<Setup>({ ...DEFAULT_SETUP });
@@ -60,7 +117,7 @@ export default function Playground() {
     setPageId(target.id);
     setScene(target.screen);
     if (target.device) setDevice(target.device);
-    if (target.overlay) setTable(makeDemoTable());
+    if (target.screen === 'table') setTable(tableForPage(target));
   };
 
   const changeDevice = (next: DeviceKind) => {
@@ -76,10 +133,15 @@ export default function Playground() {
     setPageId('lobby');
   };
 
-  const toggleReady = (seatId: string) => {
-    setSeats((prev) =>
-      prev.map((seat) => (seat.id === seatId ? { ...seat, ready: !seat.ready } : seat)),
-    );
+  const enterDemo = () => {
+    setScene('demo');
+    setPageId('demo');
+  };
+
+  const toggleReady = () => {
+    setSeats((prev) => prev.map((seat) => (
+      seat.id === 'p1' ? { ...seat, ready: !seat.ready } : seat
+    )));
   };
 
   const joinBot = () => {
@@ -91,7 +153,7 @@ export default function Playground() {
         id: `p${index + 1}`,
         name: PLAYER_NAMES[index] ?? `模拟玩家 ${index}`,
         kind: 'bot',
-        ready: false,
+        ready: true,
         alive: true,
         handCount: 0,
       };
@@ -119,7 +181,7 @@ export default function Playground() {
         ...prev,
         currentId: next.id,
         round: next.id === 'p1' ? prev.round + 1 : prev.round,
-        log: [...prev.log, `演示推进：当前玩家 ${next.name}。`],
+        log: [...prev.log, `演示推进：当前玩家 ${next.name}`],
       };
     });
   };
@@ -149,42 +211,32 @@ export default function Playground() {
         setPageId('lobby');
         break;
       case 'eliminated':
-        setTable({
-          ...makeDemoTable(),
-          seats: makeDemoTable().seats.map((seat) =>
-            seat.id === 'p1' ? { ...seat, alive: false, handCount: 0 } : seat,
-          ),
-          hand: [],
-          currentId: 'p2',
-          log: [
-            ...makeDemoTable().log,
-            '我抽到炸弹猫，未持有拆除',
-            '我被淘汰，可继续观战',
-          ],
-        });
+        setTable(tableForPage(findPage('table-eliminated')));
         setDevice('phone');
         setScene('table');
-        setPageId('table-mobile');
+        setPageId('table-eliminated');
         break;
       case 'bot-turn':
         setTable((prev) => ({
           ...prev,
           currentId: 'p2',
-          log: [...prev.log, '演示：当前玩家切换为模拟玩家 A。'],
+          log: [...prev.log, '演示：当前玩家切换为模拟玩家 A'],
         }));
         setScene('table');
         setPageId(device === 'desktop' ? 'table-desktop' : 'table-mobile');
         break;
       case 'empty-discard':
-        setTable({ ...makeDemoTable(), discardCount: 0, discardTop: '（空）' });
+        setTable({ ...makeDemoTable(), discardCount: 0, discardTop: '暂无弃牌' });
         setDevice('phone');
         setScene('table');
-        setPageId('effect-discard');
+        setPageId('play-discard');
         break;
       case 'no-defuse':
         setTable({
           ...makeDemoTable(),
           hand: makeDemoTable().hand.filter((card) => card.kind !== 'defuse'),
+          pendingLabel: '炸弹猫',
+          pendingStatus: '等待 我 决定是否使用拆除',
         });
         setDevice('phone');
         setScene('table');
@@ -215,7 +267,14 @@ export default function Playground() {
 
   const renderScene = () => {
     if (scene === 'home') {
-      return <HomeScene setup={setup} onChange={updateSetup} onEnterLobby={enterLobby} />;
+      return (
+        <HomeScene
+          setup={setup}
+          onChange={updateSetup}
+          onEnterLobby={enterLobby}
+          onDemo={enterDemo}
+        />
+      );
     }
     if (scene === 'lobby') {
       return (
@@ -228,6 +287,9 @@ export default function Playground() {
           onBack={backHome}
         />
       );
+    }
+    if (scene === 'demo') {
+      return <DemoScene onBack={backHome} />;
     }
     if (scene === 'table') {
       return (
@@ -350,7 +412,11 @@ export default function Playground() {
                 <button type="button" className="pg-mini" onClick={advanceTurn}>
                   推进回合
                 </button>
-                <button type="button" className="pg-mini" onClick={() => setTable(makeDemoTable())}>
+                <button
+                  type="button"
+                  className="pg-mini"
+                  onClick={() => setTable(tableForPage(page))}
+                >
                   重置对局
                 </button>
               </>
